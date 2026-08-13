@@ -1,0 +1,34 @@
+<!-- Shared-core GUI condition. wavesurfer.js is vendored locally. -->
+<meta charset="utf-8">
+<title>Diarization correction — GUI condition</title>
+<link rel="stylesheet" href="/static/style.css">
+
+<div id="app">
+  <header>
+    <h1>Diarization correction <span class="cond">GUI condition</span></h1>
+    <div class="bar">
+      <label>Participant <input id="pid" value="pilot01" size="10"></label>
+      <label>Clip
+        <select id="clip"><option value="clipA">clipA</option></select>
+      </label>
+      <button id="start">Start trial</button>
+      <button id="finish" disabled>Finish &amp; score</button>
+      <span id="timer" class="timer">00:00</span>
+      <span id="status" class="status">enter participant, press Start</span>
+    </div>
+  </header>
+
+  <div id="legend"></div>
+  <div id="wave"></div>
+
+  <div class="help">
+    <b>Click</b> a segment to cycle its speaker (fixes a confusion error).
+    <b>Drag a segment edge</b> to move a boundary. <b>Spacebar</b> plays / pauses.
+    The view is fixed to the whole clip; there is no zoom (matched across
+    conditions by design).
+  </div>
+
+  <pre id="summary" hidden></pre>
+</div>
+
+<script type="module" src="/static/app.js"></script>

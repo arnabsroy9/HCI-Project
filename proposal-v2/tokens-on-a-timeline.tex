@@ -1,0 +1,633 @@
+% =============================================================
+%  Tokens on a Timeline: Tangible Correction of Automatic
+%  Speaker Diarization for Low-Resource Speech Annotation
+%
+%  Target journal: Behaviour & Information Technology
+%                  (Taylor & Francis, Q1)
+%  Style: APA author-year
+%  Notes for production:
+%    - Replace \documentclass{article} with the official
+%      Taylor & Francis class \documentclass{tandfarticle}
+%      when the journal's cls is available locally.
+%    - Move authorship block to the journal's preferred
+%      \author{...} \affiliation{...} macros for camera-ready.
+% =============================================================
+
+\documentclass[10pt,a4paper,twocolumn]{article}
+
+% --- Packages ----------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=0.75in]{geometry}
+\usepackage{times}
+\usepackage{microtype}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage[round,authoryear]{natbib}
+\bibliographystyle{apalike}
+
+% --- Title and authors -------------------------------------------
+\title{\textbf{Tokens on a Timeline: Tangible Correction of Automatic
+       Speaker Diarization for Low-Resource Speech Annotation}}
+
+\author{
+  Arnab Satyam Roy \\
+  Department of Computer Science \\
+  American International University--Bangladesh (AIUB) \\
+  Dhaka, Bangladesh \\
+  \href{mailto:arnabsroy9@gmail.com}{arnabsroy9@gmail.com}
+  \and
+  Ahsanul Haque \\
+  Department of Computer Science \\
+  American International University--Bangladesh (AIUB) \\
+  Dhaka, Bangladesh \\
+  \href{mailto:ahsanulhaque1231@outlook.com}{ahsanulhaque1231@outlook.com}
+  \and
+  Abdus Salam \\
+  Department of Computer Science \\
+  American International University--Bangladesh (AIUB) \\
+  Dhaka, Bangladesh \\
+  \href{mailto:abdus.salam@aiub.edu}{abdus.salam@aiub.edu}
+}
+
+\date{\today}
+
+\begin{document}
+
+\twocolumn[\begin{@twocolumnfalse}
+\maketitle
+\end{@twocolumnfalse}]
+\onehalfspacing
+
+% =============================================================
+%  1. Introduction
+% =============================================================
+\section{Introduction}\label{sec:intro}
+
+Long-form speech understanding, comprising both transcription and
+speaker attribution, underpins applications including media
+indexing, meeting summarization, accessibility tooling, and legal
+and forensic audio analysis. Current systems remain optimized for
+high-resource languages, and their performance on conversational,
+multi-speaker, low-resource audio is markedly weaker. Recent work
+on Bangla long-form speech indicates that further gains depend on more annotated
+diarization data: the diarization stage of an end-to-end pipeline is
+limited by a small number of annotated recordings \citep{bhuiyan2026banglawsd}, and out-of-the-box
+diarization on Bangla conversational content reaches a
+diarization error rate (DER) of around 40\% on the only public
+benchmark \citep{tabib2026bengaliloop}.
+
+This constraint points to an opportunity located in the interaction
+layer rather than the model. Faster and more reliable human
+correction tools yield more corrected annotation, which in turn
+supports better models for under-resourced languages. The
+contribution proposed here lies in that interaction layer. The
+diarization model is frozen and treated as a fixed backend, and no
+modeling contribution is claimed. Bangla provides the motivation
+and the deployment setting, namely annotation scarcity, while the
+interaction question concerns the general problem of correcting
+the temporal output of a learned recognizer.
+
+We describe a tangible user interface in which a physical token
+represents each speaker and is placed on a printed timeline to
+correct the output of a frozen pre-trained diarization model. The
+contribution is an interaction technique, the empirical hypothesis
+that justifies it, and the study design that will test the
+hypothesis. Section~\ref{sec:lit} reviews related work in four
+threads: the automatic diarization pipeline and the human-facing
+correction bottleneck, tangible interaction for time-based
+information, empirical comparisons of tangible and graphical
+modalities, and the low-resource Bangla speech setting.
+Section~\ref{sec:gap} states the gap addressed at the intersection
+of these threads. Section~\ref{sec:obj} lists the objectives and
+hypotheses. Section~\ref{sec:method} specifies the proposed system
+and study design in full.
+
+% =============================================================
+%  2. Literature Review
+% =============================================================
+\section{Literature Review}\label{sec:lit}
+
+\subsection{Automatic speaker diarization and the correction
+  bottleneck}
+\label{sec:lit-diarization}
+
+Speaker diarization is the task of partitioning an audio stream
+into homogeneous segments according to speaker identity
+\citep{bredin2020pyannote}. Contemporary systems follow a
+segmentation--embedding--clustering pipeline in which a
+sliding-window segmenter produces frame-level speaker
+activities, a per-window embedding model summarises each
+window into a fixed-dimensional vector, and an agglomerative
+or spectral clustering groups windows into speaker tracks. The
+pyannote.audio toolkit is a widely used open-source
+reference implementation, with pre-trained models for voice
+activity detection, speaker change detection, overlapped speech
+detection, and speaker embedding \citep{bredin2020pyannote}.
+Recent work on the loss formulation shows that switching from
+the standard multi-label encoding to a powerset multi-class
+encoding, in which each overlap pattern is a separate class,
+removes the fragile detection threshold and yields consistent
+gains on a wide range of benchmarks \citep{plaquet2023powerset}.
+Long-form recognition is increasingly delivered by weakly
+supervised encoder--decoder models such as Whisper
+\citep{radford2023whisper}, which has become a common backbone
+for Bangla long-form ASR \citep{bhuiyan2026banglawsd}. The
+end-to-end Bangla pipelines that combine Whisper and pyannote
+report substantial improvements over the unadapted baselines,
+but the same line of work points to annotated data, not
+modelling, as the limiting factor for further gains.
+
+Recent work has explored four routes to making the correction step
+cheaper or faster. The first is post-hoc, model-driven correction of
+the diarization output. \citet{he2026inmeeting} describe an
+LLM-assisted workflow in which a user provides brief corrective
+feedback in natural language, an LLM interprets which span to
+re-assign, and online speaker enrollments are added to prevent
+future attribution errors. A complementary direction uses a
+fine-tuned LLM as a speaker error corrector at the transcript
+level, taking the initial diarization hypothesis and the ASR
+transcript as input and producing a corrected label sequence
+\citep{kumar2025seal, efstathiadis2024llmdiar}. The latter
+line demonstrates that LLM-based correction can markedly improve
+diarization accuracy on a held-out benchmark, but the gains are
+constrained to transcripts produced by the same ASR tool that
+generated the fine-tuning data. Related work reformulates the
+correction as an end-to-end neural post-processing step that
+exploits the interaction between the initial speaker activity
+and the acoustic features \citep{han2024diacorrect}. All of
+these systems automate the correction step and so remove the
+human from the loop, but they require supervised training data
+that is itself scarce for low-resource languages, and they do
+not address the underlying question of how a human annotator
+can correct a model output most effectively.
+
+The second direction is human-in-the-loop active correction. In
+the diarization setting, this is exemplified by incremental
+collection-level systems in which a human expert answers simple
+yes/no questions about whether two segments were spoken by the
+same speaker, and the system updates the clustering hypothesis
+accordingly \citep{prokopalo2022active}. The questions are
+selected by an algorithm that aims to minimise human effort
+while maximising improvement in the diarization error rate, and
+a stopping criterion caps the total interaction cost. The same
+line of work generalises the framework to cross-show
+diarization through a shared speaker database.
+
+The third direction is the development of annotation tools that
+instrument the cost of correction rather than only the resulting
+accuracy. \citet{broux2018cassid} introduced the Human--Computer
+Interaction Quantity (HCIQ), a weighted sum of correction-action
+counts that captures the labour of a human correction session
+without relying on the diarization error rate alone, and they
+validated it on the REPERE French broadcast-news corpus. The
+ALLIES corpus, a meta-corpus of French TV and radio recordings
+that aggregates several earlier evaluation campaigns, was
+explicitly designed for human-assisted diarization and uses a
+similar cost-aware protocol \citep{tahon2024allies}. More
+recently, \citet{yamaguchi2026voxmap} presented
+voxmap-studio, a React-based open-source diarization annotation
+tool that records edit-operation counts and active time as a
+first-class output, and used a three-condition preliminary
+study on the AMI corpus to compare forms of within-modality
+assistance. A separate semi-automatic toolkit, AnnoTheia,
+addresses audio-visual speech annotation in low-resource
+languages by combining active-speaker detection,
+transcription, and human-in-the-loop verification
+\citep{acosta2024annotheia}. The present article is closest in
+spirit to this line of work: it treats annotation cost and
+accuracy as joint outcomes, but it varies the interaction
+modality rather than the form of within-modality assistance.
+
+The fourth direction is the model-level refinement that sits
+behind any human-facing tool. This includes both loss-function
+improvements \citep{plaquet2023powerset} and end-to-end Bangla
+pipelines \citep{bhuiyan2026banglawsd}. The present article
+treats the backend as fixed and isolates the interaction
+question.
+
+\subsection{Tangible interaction for temporal media}
+\label{sec:lit-temporal-tui}
+
+A separate thread of work embodies time physically. The reacTable
+\citep{jorda2007reactable} demonstrated that tabletop tangible
+surfaces can host rich temporal interaction through object
+manipulation. ChronoTape \citep{bennett2012chronotape} presents a
+tangible timeline for personal and family history, in which a
+paper tape is annotated through a reader device. Tquencer
+\citep{kaltenbrunner2018tquencer} provides tangible control for
+time-based media sequencing through passive tokens and overlays.
+The Tangible Video Editor \citep{zigelbaum2007tve} supports
+collaborative video editing through a set of active physical
+tokens that represent clips and transitions.
+\citet{mahieux2022sablier} use the hourglass as a tangible
+metaphor for navigating through space and time in cultural
+heritage applications, with a co-design study that demonstrates
+acceptability among museum professionals. These systems author
+or arrange temporal media; none addresses the correction of
+output produced by a learned temporal recognizer.
+
+Theoretical grounding for token-based temporal interfaces comes
+from the token+constraint framework, in which physical tokens
+represent digital information and physical constraints are mapped
+to digital operations \citep{ullmer2005tokenconstraint}. The
+related Tangible Query Interfaces apply the same idea to database
+query construction \citep{ullmer2003tangiblequery}. Both build on
+Ishii and Ullmer's broader ``Tangible Bits'' vision of bridging
+bits and atoms through graspable physical artefacts
+\citep{ishii1997tangiblebits}. A complementary thread
+investigates the design of passive tokens for multi-touch
+surfaces: \citet{morales2016touchtokens} show that the geometry
+of a token determines the grasp users adopt, and that the
+resulting touch pattern on the surface can be recognised with
+high accuracy, providing a low-cost way to combine tangible and
+gestural input without instrumenting the surface itself. The
+present study inherits the design principle that the token
+itself, not the visual channel, carries the identity anchor,
+and applies it to a temporal-correction task rather than to
+multi-touch gesture disambiguation.
+
+None of the systems reviewed above treats the token as a
+per-instance identity anchor for the purpose of correcting a
+recogniser's temporal output, which is the operation the
+present article investigates. The closest relative is the use
+of physical objects as identity anchors in tangible database
+queries, but the queries there are constructed from scratch
+rather than corrected against an automatically generated
+hypothesis, and the temporal dimension is not central.
+
+\subsection{Empirical comparisons of tangible and graphical
+  interaction}
+\label{sec:lit-tui-vs-gui}
+
+A small but methodologically relevant body of work directly
+compares tangible and graphical user interfaces on a common
+task. The earliest formal comparison in the HCI literature is
+\citet{patten2000spatcmp}, who contrasted a token-based TUI
+with a graphical icon-based GUI on a location-recall task and
+reported an advantage for the tangible condition. The TUI
+subjects performed better at recall and were also more likely
+to use absolute spatial reference frames to organise the
+blocks, a strategy that correlated with better recall. The
+work is a methodological model for the present study: a
+within-subjects comparison on a single task, with both
+conditions matched in capability and presentation.
+
+A second strand measures the cognitive cost of tangible
+interaction. \citet{chandrasekera2015cogload} compared a
+desktop augmented-reality TUI with a desktop virtual-reality
+GUI on a creative design task and found significantly lower
+self-reported cognitive load in the TUI condition
+($p = 0.045$), measured with the NASA Task Load Index
+(NASA-TLX). The interpretation offered is that the tangible
+interface supports epistemic action, the use of physical
+manipulation to off-load cognitive work, more effectively than
+the graphical interface. The present article draws on this
+methodological lineage: it uses NASA-TLX as a secondary
+outcome and tests a comparable primary question (correction
+accuracy) on a different task (diarization correction).
+
+A third strand compares tangible and graphical interaction in
+the context of the token+constraint framework
+\citep{ullmer2003tangiblequery, ullmer2005tokenconstraint}.
+Ullmer et~al.'s preliminary user study of a tangible database
+query interface against a comparable graphical interface
+reported a measurable advantage for the tangible condition on
+the specific sub-task where physical rotation mapped to
+parameter value changes; the advantage disappeared for
+sub-tasks that did not exploit a physical affordance unique to
+the tangible condition. The present study follows the same
+logic of designing the comparison around the affordance unique
+to each modality, and the double-dissociation prediction in
+Section~\ref{sec:obj} is an explicit generalisation of the
+affordance-specific-advantage pattern.
+
+\subsection{Low-resource Bangla speech as the deployment setting}
+\label{sec:lit-bangla}
+
+The deployment context for the proposed work is Bangla, a
+low-resource language in the long-form speech regime. Public
+Bangla corpora remain dominated by short, single-speaker
+utterances collected through crowdsourcing, and the largest
+publicly available corpus of this kind is the 229-hour Google
+Bangla speech corpus \citep{kjartansson2018crowdsourced}. The Bengali-Loop benchmark
+\citep{tabib2026bengaliloop} was introduced specifically to
+address the long-form gap and consists of two sub-corpora: a
+long-form ASR corpus of 191 recordings totalling 158.6 hours
+from eleven YouTube channels, with a reproducible
+subtitle-extraction and human-in-the-loop verification pipeline,
+and a speaker diarization corpus of 24 recordings totalling 22
+hours with fully manual speaker-turn labels in CSV format. The
+benchmark reports that an out-of-the-box pyannote.audio pipeline
+reaches a diarization error rate of 40.08\% on the diarization
+test set, and that a BengaliAI fine-tuned Whisper model reaches
+a word error rate of 34.07\% on the ASR test set. These numbers
+anchor the gap between unadapted performance and the level
+required for downstream applications, and they are consistent
+with the claim that further gains on low-resource languages
+depend primarily on labelled data rather than on modelling
+innovation.
+
+The DL Sprint 4.0 Kaggle competition, run on a subset of the
+Bengali-Loop data, attracted multiple community submissions
+that fine-tuned the pyannote segmentation backbone and the
+tugstugi Whisper model on the competition training set. One
+submission \citep{bhuiyan2026banglawsd} reports a DER of
+23.92\% on the diarization track and a WER of 24.41\% on the
+ASR track, both well below the unadapted baselines; other
+submissions report even lower numbers, with public-leaderboard
+DER around 20\% and public WER around 16\%
+\citep{tanvir2026shobdosetu}. The competition reports also produced three
+pieces of empirical evidence that are directly relevant to the
+present work: first, that fine-tuning the segmentation component
+of pyannote.audio is more impactful than fine-tuning the
+embedding model \citep{chowdhury2026robustbn}; second, that vocal source
+separation combined with silence-aware chunking reduces
+word-boundary errors by preserving sentence-internal structure
+\citep{chowdhury2026robustbn}; and third, that targeted data augmentation
+for muffled-zone robustness contributes measurable gains
+\citep{tanvir2026shobdosetu}. Each of these findings depends on having
+access to labelled long-form Bangla audio, and the labelled
+data was produced in part by manual annotation. The competition
+submissions themselves include a description of the data
+pipeline used to construct the training set, and the manual
+verification of the automatically extracted transcripts and
+the manual annotation of speaker turns is reported as a
+substantial component of that pipeline. The present work is
+complementary to these modelling efforts: by targeting the
+human annotation step, it attacks the constraint that the
+modelling efforts also identify, namely the scarcity of
+high-quality annotated data.
+
+% =============================================================
+%  3. Research Gap
+% =============================================================
+\section{Research Gap}\label{sec:gap}
+
+The four threads reviewed in Section~\ref{sec:lit} have evolved
+largely independently. Screen-based diarization correction is
+mature, with both commercial and research tools that instrument
+correction cost \citep{broux2018cassid, tahon2024allies,
+yamaguchi2026voxmap}; tangible interfaces for time concern
+sequencing and authoring of temporal media
+\citep{jorda2007reactable, bennett2012chronotape,
+kaltenbrunner2018tquencer, mahieux2022sablier}; and human-in-the-loop
+annotation has been shown to be effective when the interaction is
+graphical \citep{prokopalo2022active}. The token+constraint
+framework provides a vocabulary for tangible interaction with
+digital information \citep{ullmer2005tokenconstraint,
+ullmer2003tangiblequery, ishii1997tangiblebits}, and empirical
+work has demonstrated measurable differences between tangible and
+graphical interaction on memory and load outcomes
+\citep{patten2000spatcmp, chandrasekera2015cogload}.
+
+The gap addressed in this article lies at the intersection of
+these areas. The specific combination of (i) passive token-based
+correction, (ii) of the temporal output produced by a frozen
+recognizer, (iii) deployed as an annotation accelerator for a
+low-resource language, has not been explored. No existing study
+asks whether the choice of interaction modality governs which
+class of recognizer error a human annotator catches.
+The closest contemporary neighbour
+\citep{yamaguchi2026voxmap} varies graphical assistance while
+holding modality constant. The present study holds the recognizer
+and the annotation operations constant and varies the modality.
+
+% =============================================================
+%  4. Objectives
+% =============================================================
+\section{Objectives}\label{sec:obj}
+
+The central question is whether the interaction modality used to
+correct automatic speaker diarization changes which class of error
+a human annotator catches and repairs, and at what cost in time
+and effort. The study tests three hypotheses.
+
+\textbf{H1.} Annotators using the tangible interface correct
+speaker-confusion errors, in which speech is attributed to the
+wrong speaker, with higher accuracy and lower correction time than
+with the graphical interface, because per-speaker tokens
+externalize identity tracking.
+
+\textbf{H2.} Annotators using the graphical interface correct
+temporal boundary errors, that is the offsets of segment start
+and end points, with greater precision than with the tangible
+interface, because, at a temporal scale held identical across
+conditions, the graphical interface affords finer temporal control
+through continuous pointer positioning on the waveform, whereas the
+tangible interface is limited by the positional resolution of the
+marker tracker.
+
+\textbf{H3.} Perceived workload and stated preference differ by
+modality. These are treated as secondary outcomes.
+
+The primary prediction is the interaction between modality and
+error type, the double dissociation, which is more robust to
+novelty and engagement effects than any single main effect. A
+confirmatory result on the interaction, with H1 and H2 pointing in
+opposite directions, would establish that interaction modality
+governs which class of recognizer error a human annotator catches,
+a principle that transfers beyond diarization to other temporal
+labeling tasks. Detecting a crossover interaction of moderate
+size requires more statistical power than detecting a single
+main effect; the sample size in Section~\ref{sec:method-design}
+is therefore set with the interaction term as the primary
+inference target, and a sensitivity analysis is pre-registered
+for the smallest effect of the predicted direction that the
+study can reliably detect.
+
+% =============================================================
+%  5. Proposed Methodology
+% =============================================================
+\section{Proposed Methodology}\label{sec:method}
+
+\subsection{Tangible interface}
+\label{sec:method-tangible}
+
+The interface uses one passive token per speaker. Each token is a
+printed ArUco fiducial marker fixed to a small rigid object such
+as a wooden craft cube or a bottle cap, which requires no
+specialized fabrication. The camera reads only marker identity
+and position. Tokens are placed on a printed paper timeline
+divided into horizontal lanes. Placing a speaker's token in a
+segment assigns that segment to the speaker, and moving the token
+to another segment reassigns it. Boundaries are edited with a
+separate boundary-handle token that snaps to the nearest segment
+edge in the lane on which it rests, and sliding the handle moves
+that edge. The two operations are carried by different physical
+tokens and are told apart by marker identity, so a reassignment
+and a boundary edit never share a gesture. The handle gives the
+tangible condition a genuine if coarser boundary-editing
+capability, so that the boundary comparison is not decided by
+capability alone.
+
+Sensing uses a consumer USB webcam of at least 1080p resolution,
+mounted overhead on a copy stand and feeding directly into
+OpenCV. A local fixed-framerate feed avoids the latency and
+connection fragility of a phone-camera arrangement. Autofocus is
+disabled and exposure and white balance are fixed through the
+camera controls to prevent tracking loss. Because webcam
+resolution determines marker positional resolution, and therefore
+the smallest boundary adjustment the tangible condition can
+express, the camera is fixed and characterized before data
+collection. Marker detection is restricted to identity and
+position, with no rotation or multi-token grammar, which keeps the
+vision pipeline small and inexpensive to run.
+
+During the tangible condition the screen presents the current
+waveform, segment boundaries, speaker coloring, and playback
+position, but accepts no input. The mouse and keyboard are
+removed from the workspace so that the screen cannot serve as an
+alternative interface, and all correction is performed through
+the tokens. Feedback is therefore visual rather than haptic,
+consistent with established tabletop tangible interfaces such as
+the reacTable \citep{jorda2007reactable}.
+
+\subsection{Graphical baseline}
+\label{sec:method-graphical}
+
+The graphical baseline is built by wrapping the open-source
+waveform library wavesurfer.js, together with its regions plugin,
+in a minimal interface. This reuses the most demanding parts of
+the frontend, including waveform rendering, zooming, playback
+synchronization, and draggable region handles,
+while keeping the comparison under experimental control. A full
+annotation platform is deliberately not adopted, because its
+accumulated features would introduce differences unrelated to
+interaction modality and reducing it to parity would often exceed
+the effort of a focused implementation.
+
+The baseline is governed by three constraints. It exposes exactly
+the operations available in the tangible condition, namely
+reassigning a segment to a speaker by selecting its region and
+adjusting a boundary by dragging a region edge, and no others. It
+omits production features that have no tangible counterpart,
+including keyboard shortcuts, multi-track layouts, snapping,
+autosave, and free zooming of the waveform, whose temporal scale
+is instead fixed and matched across conditions
+(Section~\ref{sec:method-control}). It remains a competent editor, since a weakened
+baseline would invalidate any observed advantage for the tangible
+interface.
+
+\subsection{Diarization backend}
+\label{sec:method-backend}
+
+A pre-trained Bangla diarization pipeline, comprising pyannote
+segmentation, speaker embedding, and clustering
+\citep{bredin2020pyannote, plaquet2023powerset}, produces
+diarization output before any session. No model runs during
+interaction, so there is no computational load at interaction time
+and laptop-grade hardware is sufficient. The model is not
+modified and is not part of the contribution.
+
+\subsection{Experimental control across conditions}
+\label{sec:method-control}
+
+Both conditions are implemented as a single application with a
+shared state model and a shared renderer, differing only in the
+source of input. The on-screen representation is produced by the
+same rendering code in both conditions, which removes visual
+presentation as a source of difference. In the graphical
+condition the input source is mouse interaction with the rendered
+regions. In the tangible condition the input source is the marker
+tracker, which emits the same logical operations of speaker
+reassignment and boundary movement while the rendered regions
+remain non-interactive. Sharing the waveform view across
+conditions is also what makes the boundary comparison
+interpretable. The waveform is drawn at a single fixed temporal scale that shows
+the whole clip, and interactive zooming is disabled in both
+conditions, so neither modality has finer visual access to the
+signal than the other. Because both conditions act against the
+same fixed visual reference, the boundary measurement reflects the
+precision of the manipulation channel, boundary-handle sliding
+against pointer dragging, rather than differences in visual
+access. A zoom-assisted graphical editor would carry a resolution
+advantage that belongs to the tool rather than to the interaction
+modality, and fixing the scale removes that confound while
+preserving the finer positioning the pointer affords at that
+scale. The fixed scale and the predicted direction of the boundary
+effect are set before data collection.
+
+Playback is held constant across conditions through a single
+physical control used for play, pause, and seeking in both, so
+that playback does not introduce an asymmetry unrelated to the
+interaction modality.
+
+Two consequences of strict information parity are noted. First,
+because speaker identity is shown on screen in both conditions, a
+confirmed H1 is attributable to the manipulation of identity,
+that is grasping and placing the correct token without visual
+search of a label, rather than to a stronger form of external
+representation. This narrows the mechanism while strengthening
+internal validity. Second, with a vertical monitor the locus of
+action on the table is spatially separated from the locus of
+feedback on the screen, whereas the graphical condition
+co-locates them. This separation is a property of the tangible
+setup as instantiated and is reflected in the scope of the
+claims, which concern token interaction on a table with
+screen-based feedback.
+
+\subsection{Design and participants}
+\label{sec:method-design}
+
+The study uses a within-subjects design with two conditions, the
+tangible interface and the graphical baseline, and counterbalanced
+order to control for learning effects. Each participant corrects
+a set of diarized audio clips under each condition. Detecting an
+interaction requires more statistical power than detecting a
+single main effect, so the study targets between 16 and 24
+participants. The faculty collaborator conducts recruitment and
+runs the sessions.
+
+\subsection{Stimulus construction}
+\label{sec:method-stimulus}
+
+The error distribution of the frozen model is first characterized
+on held-out Bangla audio, measuring the relative frequency of
+speaker-confusion errors and boundary errors. Clips are then
+constructed by injecting a controlled and balanced set of both
+error types onto ground-truth diarization, at rates consistent
+with the model's actual behavior, so that the exact errors are
+known in advance and matched across conditions and participants.
+Injected boundary offsets are sampled from the model's measured
+offset distribution, with offsets smaller than the characterized
+tangible resolution floor excluded, so that every injected
+boundary error is large enough to be corrected in either condition
+and the comparison is not confounded by errors that only one
+modality can physically express.
+Total error count and clip difficulty are held constant across
+trials, and clip sets are counterbalanced across conditions. The
+number of speakers is held constant to reduce variance.
+
+\subsection{Measures}
+\label{sec:method-measures}
+
+The primary measures are correction accuracy for each error type,
+defined as the proportion of injected errors of that type that
+are correctly repaired, and correction time for each error type.
+Boundary precision is measured as the absolute timestamp error
+remaining after correction. Secondary measures are perceived
+workload, assessed with the NASA Task Load Index
+\citep{hart1988nasatlx}, following the precedent of
+\citet{chandrasekera2015cogload}, and stated preference.
+
+\subsection{Analysis}
+\label{sec:method-analysis}
+
+The primary analysis is a two-factor repeated-measures model with
+modality and error type as factors, applied to accuracy and to
+correction time. The interaction term tests the predicted
+dissociation. Boundary precision is analyzed separately.
+Secondary measures are reported with appropriate non-parametric
+tests.
+
+% =============================================================
+%  References
+% =============================================================
+\bibliography{ref}
+
+\end{document}

@@ -1,0 +1,44 @@
+# Reference material (not project source; may be large/copyrighted)
+/Lecture Slides/
+/Papers/
+/*.pdf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.bbl
+*.blg
+*.out
+*.synctex.gz
+*.toc
+*.fdb_latexmk
+*.fls
+
+# Rig captures / previews (regenerable)
+rig/detect/
+rig/*_preview.png
+rig/mapping_constants.txt
+webcam-test/frames/
+
+# App runtime
+app/logs/*.jsonl
+app/logs/*.json
+app/stimuli/*/audio.wav
+app/errors.csv
+app/trials.csv
+
+# Node (if ever added)
+node_modules/
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Recompiled manuscript (regenerable from .tex)
+proposal-v2/tokens-on-a-timeline.pdf
