@@ -1,0 +1,5 @@
+charset-normalizer==3.5.0
+numpy==2.4.6
+opencv-contrib-python==5.0.0.93
+pillow==12.3.0
+reportlab==5.0.0

@@ -6,11 +6,14 @@ plus wavesurfer.js vendored under `static/vendor/`.
 
 ## Run (from this `app/` folder)
 
-The system Python has the deps; conda `(base)` does not, so:
+First do the one-time venv setup in the repo root (see [../README.md](../README.md)),
+then activate it so `python` resolves to the repo venv:
 
 ```bash
-conda deactivate
+..\.venv\Scripts\Activate.ps1
 ```
+
+(Or prefix each command with `..\.venv\Scripts\python.exe` instead of activating.)
 
 1. Build a sample stimulus (synthetic 3-speaker audio + injected errors):
    ```bash

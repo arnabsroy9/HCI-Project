@@ -32,6 +32,9 @@ app/stimuli/*/audio.wav
 app/errors.csv
 app/trials.csv
 
+# Python virtual environment (recreate from requirements.txt)
+.venv/
+
 # Node (if ever added)
 node_modules/
 
