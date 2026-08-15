@@ -68,7 +68,8 @@ def replay(jsonl):
                 fixed_at[j] = r["elapsed_s"]
 
     meta = {"participant": start["participant"], "condition": start["condition"],
-            "clip": clip, "log": os.path.basename(jsonl)}
+            "clip": clip, "phase": start.get("phase", "single"),
+            "log": os.path.basename(jsonl)}
     rows = []
     for j, e in enumerate(errors):
         ok, resid = err_corrected(segs, e)
@@ -106,12 +107,16 @@ def main():
         w = csv.DictWriter(f, fieldnames=list(trials[0].keys()))
         w.writeheader(); w.writerows(trials)
 
-    print(f"{len(trials)} trial(s), {len(all_rows)} error rows")
-    print("  -> errors.csv (GLMM unit), trials.csv\n")
-    # quick aggregate by condition x error_type
+    n_meas = sum(1 for r in all_rows if r["phase"] == "measured")
+    print(f"{len(trials)} trial(s), {len(all_rows)} error rows "
+          f"({n_meas} measured, training excluded from the aggregate)")
+    print("  -> errors.csv (GLMM unit; has a phase column), trials.csv\n")
+    # aggregate by condition x error_type, MEASURED trials only
     print(f"{'condition':<10}{'error_type':<12}{'n':>4}{'corrected':>11}{'accuracy':>10}")
     agg = {}
     for r in all_rows:
+        if r["phase"] != "measured":
+            continue
         k = (r["condition"], r["error_type"])
         agg.setdefault(k, []).append(r["corrected"])
     for (cond, et), v in sorted(agg.items()):

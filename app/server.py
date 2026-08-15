@@ -34,8 +34,15 @@ LOCK = threading.Lock()
 STATE = {
     "clip": None, "duration": 0.0, "speakers": [], "segments": [],
     "answer_key": None, "version": 0,
-    "session": None,   # {participant, condition, started_epoch, log_path}
+    "session": None,    # {participant, condition, phase, started_epoch, log_path}
+    "protocol": None,   # {participant, group, trials, idx, results}
 }
+
+# --- counterbalanced within-subjects protocol ---
+CONDITIONS = ["gui", "tangible"]
+TRAIN_CLIP = "clipT"
+MEAS_SET1 = ["clipA", "clipB"]
+MEAS_SET2 = ["clipC", "clipD"]
 
 
 # ---------- stimulus / session ----------
@@ -46,19 +53,20 @@ def load_stimulus(clip):
     return hyp, key
 
 
-def start_session(participant, condition, clip):
+def start_session(participant, condition, clip, phase="single", trial_index=None):
     hyp, key = load_stimulus(clip)
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
     safe = "".join(c for c in participant if c.isalnum()) or "anon"
-    log_path = os.path.join(LOGS, f"{safe}_{condition}_{clip}_{ts}.jsonl")
+    log_path = os.path.join(LOGS, f"{safe}_{condition}_{clip}_{phase}_{ts}.jsonl")
     STATE.update(clip=clip, duration=hyp["duration"], speakers=hyp["speakers"],
                  segments=[dict(s) for s in hyp["segments"]],
                  answer_key=key, version=0,
                  session={"participant": participant, "condition": condition,
-                          "clip": clip, "started_epoch": time.time(),
-                          "log_path": log_path})
+                          "clip": clip, "phase": phase, "trial_index": trial_index,
+                          "started_epoch": time.time(), "log_path": log_path})
     log_event({"event": "session_start", "participant": participant,
-               "condition": condition, "clip": clip})
+               "condition": condition, "clip": clip, "phase": phase,
+               "trial_index": trial_index})
     return session_state()
 
 
@@ -66,6 +74,74 @@ def session_state():
     return {"version": STATE["version"], "clip": STATE["clip"],
             "duration": STATE["duration"], "speakers": STATE["speakers"],
             "segments": STATE["segments"], "session": STATE["session"]}
+
+
+def build_plan(participant, group=None):
+    """Counterbalanced trial list. group bit0 = condition order,
+    bit1 = which measured clip set each condition gets. A training
+    block precedes each condition's measured trials (novelty control)."""
+    if group is None:
+        group = sum(ord(c) for c in participant) % 4
+    order = CONDITIONS if not (group & 1) else CONDITIONS[::-1]
+    if not (group & 2):
+        clips = {"gui": MEAS_SET1, "tangible": MEAS_SET2}
+    else:
+        clips = {"gui": MEAS_SET2, "tangible": MEAS_SET1}
+    trials = []
+    for cond in order:
+        trials.append({"phase": "training", "condition": cond, "clip": TRAIN_CLIP})
+        for cl in clips[cond]:
+            trials.append({"phase": "measured", "condition": cond, "clip": cl})
+    return group, trials
+
+
+def protocol_current():
+    p = STATE["protocol"]
+    tr = p["trials"][p["idx"]]
+    return {"done": False, "trial_index": p["idx"], "total": len(p["trials"]),
+            "group": p["group"], "phase": tr["phase"],
+            "condition": tr["condition"], "clip": tr["clip"],
+            "duration": STATE["duration"], "speakers": STATE["speakers"],
+            "segments": STATE["segments"]}
+
+
+def protocol_advance():
+    """Move to the next trial (or finish the whole session)."""
+    p = STATE["protocol"]
+    p["idx"] += 1
+    if p["idx"] >= len(p["trials"]):
+        path = os.path.join(LOGS, f"{p['participant']}_session_"
+                            f"{datetime.datetime.now():%Y%m%d_%H%M%S}.json")
+        json.dump({"participant": p["participant"], "group": p["group"],
+                   "trials": p["trials"], "results": p["results"]},
+                  open(path, "w"), indent=2)
+        return {"done": True, "total": len(p["trials"]),
+                "group": p["group"], "results": p["results"]}
+    tr = p["trials"][p["idx"]]
+    start_session(p["participant"], tr["condition"], tr["clip"],
+                  phase=tr["phase"], trial_index=p["idx"])
+    return protocol_current()
+
+
+def protocol_start(participant, group=None):
+    g, trials = build_plan(participant, group)
+    STATE["protocol"] = {"participant": participant, "group": g,
+                         "trials": trials, "idx": -1, "results": []}
+    return protocol_advance()
+
+
+def protocol_next():
+    """Score the current trial, record it, advance."""
+    p = STATE["protocol"]
+    summary = score()
+    tr = p["trials"][p["idx"]]
+    p["results"].append({"trial_index": p["idx"], "phase": tr["phase"],
+                         "condition": summary["condition"], "clip": summary["clip"],
+                         "total_time_s": summary["total_time_s"],
+                         "confusion": summary["confusion"],
+                         "boundary": summary["boundary"]})
+    log_event({"event": "trial_finish", "summary": summary})
+    return protocol_advance()
 
 
 def log_event(rec):
@@ -187,6 +263,11 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/state":
             with LOCK:
                 return self._json(200, session_state())
+        if u.path == "/api/protocol/current":
+            with LOCK:
+                if not STATE["protocol"]:
+                    return self._json(409, {"error": "no protocol running"})
+                return self._json(200, protocol_current())
         return self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
@@ -199,6 +280,15 @@ class Handler(BaseHTTPRequestHandler):
                     st = start_session(body["participant"], body["condition"],
                                        body["clip"])
                 return self._json(200, st)
+            if u.path == "/api/protocol/start":
+                with LOCK:
+                    return self._json(200, protocol_start(body["participant"],
+                                                          body.get("group")))
+            if u.path == "/api/protocol/next":
+                with LOCK:
+                    if not STATE["protocol"]:
+                        return self._json(409, {"error": "no protocol running"})
+                    return self._json(200, protocol_next())
             if u.path == "/api/op":
                 with LOCK:
                     if not STATE["session"]:

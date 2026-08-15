@@ -1,0 +1,169 @@
+{
+  "clip": "clipB",
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 4.355,
+      "speaker": "S1"
+    },
+    {
+      "id": 1,
+      "start": 4.355,
+      "end": 5.857,
+      "speaker": "S3"
+    },
+    {
+      "id": 2,
+      "start": 5.857,
+      "end": 9.814,
+      "speaker": "S2"
+    },
+    {
+      "id": 3,
+      "start": 9.814,
+      "end": 11.845,
+      "speaker": "S1"
+    },
+    {
+      "id": 4,
+      "start": 11.845,
+      "end": 15.047,
+      "speaker": "S2"
+    },
+    {
+      "id": 5,
+      "start": 15.047,
+      "end": 19.546,
+      "speaker": "S3"
+    },
+    {
+      "id": 6,
+      "start": 19.546,
+      "end": 23.398,
+      "speaker": "S2"
+    },
+    {
+      "id": 7,
+      "start": 23.398,
+      "end": 26.394,
+      "speaker": "S3"
+    },
+    {
+      "id": 8,
+      "start": 26.394,
+      "end": 29.251,
+      "speaker": "S1"
+    },
+    {
+      "id": 9,
+      "start": 29.251,
+      "end": 33.325,
+      "speaker": "S3"
+    },
+    {
+      "id": 10,
+      "start": 33.325,
+      "end": 36.059,
+      "speaker": "S2"
+    },
+    {
+      "id": 11,
+      "start": 36.059,
+      "end": 40.255,
+      "speaker": "S3"
+    },
+    {
+      "id": 12,
+      "start": 40.255,
+      "end": 44.398,
+      "speaker": "S1"
+    },
+    {
+      "id": 13,
+      "start": 44.398,
+      "end": 47.447,
+      "speaker": "S2"
+    },
+    {
+      "id": 14,
+      "start": 47.447,
+      "end": 49.408,
+      "speaker": "S1"
+    },
+    {
+      "id": 15,
+      "start": 49.408,
+      "end": 51.681,
+      "speaker": "S2"
+    },
+    {
+      "id": 16,
+      "start": 51.681,
+      "end": 54.565,
+      "speaker": "S3"
+    },
+    {
+      "id": 17,
+      "start": 54.565,
+      "end": 59.061,
+      "speaker": "S1"
+    },
+    {
+      "id": 18,
+      "start": 59.061,
+      "end": 60.0,
+      "speaker": "S3"
+    }
+  ],
+  "injected_errors": [
+    {
+      "type": "confusion",
+      "segment_id": 13,
+      "correct_speaker": "S2",
+      "wrong_speaker": "S3"
+    },
+    {
+      "type": "confusion",
+      "segment_id": 16,
+      "correct_speaker": "S3",
+      "wrong_speaker": "S2"
+    },
+    {
+      "type": "confusion",
+      "segment_id": 11,
+      "correct_speaker": "S3",
+      "wrong_speaker": "S1"
+    },
+    {
+      "type": "confusion",
+      "segment_id": 17,
+      "correct_speaker": "S1",
+      "wrong_speaker": "S3"
+    },
+    {
+      "type": "boundary",
+      "boundary_index": 14,
+      "correct_t": 49.408,
+      "wrong_t": 49.959
+    },
+    {
+      "type": "boundary",
+      "boundary_index": 16,
+      "correct_t": 54.565,
+      "wrong_t": 55.316
+    },
+    {
+      "type": "boundary",
+      "boundary_index": 7,
+      "correct_t": 26.394,
+      "wrong_t": 27.29
+    },
+    {
+      "type": "boundary",
+      "boundary_index": 15,
+      "correct_t": 51.681,
+      "wrong_t": 52.791
+    }
+  ]
+}

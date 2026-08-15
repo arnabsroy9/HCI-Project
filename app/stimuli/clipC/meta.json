@@ -1,0 +1,9 @@
+{
+  "clip": "clipC",
+  "duration": 60.0,
+  "n_speakers": 3,
+  "n_confusion": 4,
+  "n_boundary": 4,
+  "n_segments": 22,
+  "seed": 3
+}

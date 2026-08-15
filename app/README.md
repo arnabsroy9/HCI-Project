@@ -55,8 +55,33 @@ logs/              per-trial .jsonl + _summary.json  (the dataset)
 - [x] Tangible condition: `../rig/tangible_input.py` emits the same ops with
       `source:"aruco"` (dwell-based commit); validated via `--sim` without the
       camera, ready to swap in the live C920 once mounted
+- [x] Counterbalanced multi-clip session runner (protocol): training block
+      before each condition, order + clip-set counterbalanced across 4 groups,
+      per-participant results file; GUI trials interactive, tangible trials a
+      read-only display that polls while the tracker drives ops
 - [ ] Real Bengali-Loop audio in place of synthetic clips
-- [ ] Counterbalanced multi-clip session runner
+
+## Run a full participant session (protocol)
+
+Open <http://localhost:8000>, enter a participant id (optionally a group
+0-3, else auto from the id), press **Begin session**, and work through the
+trials; **Finish trial** advances. For a tangible trial, run the tracker
+alongside so it drives that trial:
+
+```bash
+..\.venv\Scripts\python.exe rig\tangible_input.py --duration 60          # live
+..\.venv\Scripts\python.exe rig\tangible_input.py --sim rig\demo_sim.json # dry-run
+```
+
+At the end a per-participant results file is written to `logs/` and the
+measured-vs-training split is respected by `analyze.py`.
+
+Counterbalancing (group = order bit + clip-set bit):
+
+```
+group 0: gui{A,B} then tangible{C,D}      group 2: gui{C,D} then tangible{A,B}
+group 1: tangible{C,D} then gui{A,B}      group 3: tangible{A,B} then gui{C,D}
+```
 
 ## Tangible condition (from `rig/`)
 

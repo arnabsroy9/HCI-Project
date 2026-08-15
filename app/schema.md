@@ -53,3 +53,9 @@ Events: `session_start`, `op`, `session_finish` (with the scored summary).
 | POST | `/api/op` | apply + log one operation |
 | GET | `/api/state` | current segments + version |
 | POST | `/api/session/finish` | score vs answer key, write summary |
+| POST | `/api/protocol/start` | `{participant, group?}` → build counterbalanced plan, start trial 1 |
+| GET | `/api/protocol/current` | current trial (index, phase, condition, clip, segments) |
+| POST | `/api/protocol/next` | score current trial, record it, advance (or finish session) |
+
+`session/*` drives a single standalone trial; `protocol/*` sequences the full
+counterbalanced session (training + measured trials, both conditions).

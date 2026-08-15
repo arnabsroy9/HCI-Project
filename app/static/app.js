@@ -1,5 +1,6 @@
-// GUI condition frontend. Emits the shared operations (reassign,
-// move_boundary) to the backend, which owns the state and the log.
+// Protocol-aware study frontend. Walks the counterbalanced trial list;
+// GUI trials are interactive, tangible trials are a read-only display that
+// polls state while the ArUco tracker drives the same operations.
 import WaveSurfer from "/static/vendor/wavesurfer.esm.js";
 import RegionsPlugin from "/static/vendor/regions.esm.js";
 
@@ -9,10 +10,9 @@ const rgba = (hex, a) => {
   return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
 };
 
-let ws, regions, segments = [], speakers = [], duration = 0, clip = "clipA";
-let running = false, t0 = 0, timerId = null;
+let ws, regions, segments = [], speakers = [], clip = "";
+let mode = "gui", running = false, t0 = 0, timerId = null, pollId = null, lastVersion = 0;
 const byId = new Map();
-
 const $ = (id) => document.getElementById(id);
 const setStatus = (m) => ($("status").textContent = m);
 
@@ -36,15 +36,14 @@ function legend() {
 function buildRegions() {
   regions.clearRegions();
   byId.clear();
+  const interactive = mode === "gui";
   segments.forEach((seg, idx) => {
     const r = regions.addRegion({
-      id: String(seg.id),
-      start: seg.start, end: seg.end,
-      content: seg.speaker,
-      color: rgba(COLORS[seg.speaker], 0.28),
-      drag: false, resize: true,
-      resizeStart: idx > 0,                    // clip's outer edges are fixed
-      resizeEnd: idx < segments.length - 1,
+      id: String(seg.id), start: seg.start, end: seg.end,
+      content: seg.speaker, color: rgba(COLORS[seg.speaker], 0.28),
+      drag: false, resize: interactive,
+      resizeStart: interactive && idx > 0,
+      resizeEnd: interactive && idx < segments.length - 1,
     });
     byId.set(seg.id, r);
   });
@@ -63,7 +62,7 @@ function reconcile(newSegs) {
 }
 
 async function onReassign(region) {
-  if (!running) return;
+  if (!running || mode !== "gui") return;
   const sid = Number(region.id);
   const cur = segments[sid].speaker;
   const next = speakers[(speakers.indexOf(cur) + 1) % speakers.length];
@@ -74,7 +73,7 @@ async function onReassign(region) {
 }
 
 async function onBoundary(region, side) {
-  if (!running || !side) return;
+  if (!running || mode !== "gui" || !side) return;
   const sid = Number(region.id);
   const boundary = side === "end" ? sid : sid - 1;
   const t = side === "end" ? region.end : region.start;
@@ -88,12 +87,9 @@ async function onBoundary(region, side) {
 function initWave() {
   if (ws) ws.destroy();
   ws = WaveSurfer.create({
-    container: "#wave",
-    url: `/stimuli/${clip}/audio.wav`,
-    height: 120,
-    waveColor: "#c9c9c9", progressColor: "#9aa",
-    cursorColor: "#333",
-    fillParent: true, autoScroll: false, hideScrollbar: true, // fixed whole-clip scale, no zoom
+    container: "#wave", url: `/stimuli/${clip}/audio.wav`, height: 120,
+    waveColor: "#c9c9c9", progressColor: "#9aa", cursorColor: "#333",
+    fillParent: true, autoScroll: false, hideScrollbar: true, // fixed scale, no zoom
   });
   regions = ws.registerPlugin(RegionsPlugin.create());
   ws.on("decode", buildRegions);
@@ -107,35 +103,71 @@ function tick() {
     String((s / 60) | 0).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
 }
 
-async function start() {
+async function poll() {                       // tangible: reflect tracker edits
   try {
-    clip = $("clip").value;
-    const st = await api("/api/session/start",
-      { participant: $("pid").value, condition: "gui", clip });
-    segments = st.segments; speakers = st.speakers; duration = st.duration;
-    legend(); initWave();
-    running = true; t0 = Date.now();
-    clearInterval(timerId); timerId = setInterval(tick, 200);
-    $("start").disabled = true; $("finish").disabled = false;
-    $("summary").hidden = true;
-    setStatus("correcting — click segments, drag edges");
-  } catch (e) { setStatus("start error: " + e.message); }
+    const st = await api("/api/state");
+    if (st.version !== lastVersion) { lastVersion = st.version; reconcile(st.segments); }
+  } catch { /* ignore transient */ }
 }
 
-async function finish() {
-  running = false; clearInterval(timerId);
-  try {
-    const sum = await api("/api/session/finish", {});
-    $("summary").hidden = false;
-    $("summary").textContent = JSON.stringify(sum, null, 2);
-    setStatus(`done — confusion ${sum.confusion.corrected}/${sum.confusion.n}, `
-      + `boundary ${sum.boundary.corrected}/${sum.boundary.n}`);
-    $("start").disabled = false; $("finish").disabled = true;
-  } catch (e) { setStatus("finish error: " + e.message); }
+function showTrial(cur) {
+  if (cur.done) return showResults(cur);
+  $("setup").hidden = true; $("trialbar").hidden = false;
+  mode = cur.condition; clip = cur.clip;
+  segments = cur.segments; speakers = cur.speakers; lastVersion = 0;
+  $("progress").innerHTML =
+    `Trial ${cur.trial_index + 1}/${cur.total} · <b>${cur.phase.toUpperCase()}</b> · `
+    + `<span class="cond ${mode}">${mode.toUpperCase()}</span> · ${cur.clip}`;
+  $("tnote").hidden = mode !== "tangible";
+  $("ghelp").hidden = mode !== "gui";
+  $("summary").hidden = true;
+  legend(); initWave();
+  running = true; t0 = Date.now();
+  clearInterval(timerId); timerId = setInterval(tick, 200);
+  clearInterval(pollId);
+  if (mode === "tangible") pollId = setInterval(poll, 300);
+  setStatus(mode === "gui" ? "correct with mouse" : "correct with tokens");
 }
 
-$("start").onclick = start;
-$("finish").onclick = finish;
+function showResults(res) {
+  running = false; clearInterval(timerId); clearInterval(pollId);
+  $("trialbar").hidden = true; $("tnote").hidden = true; $("ghelp").hidden = true;
+  $("setup").hidden = false;
+  const meas = res.results.filter((r) => r.phase === "measured");
+  const by = {};
+  meas.forEach((r) => {
+    const k = r.condition;
+    by[k] = by[k] || { cn: 0, cc: 0, bn: 0, bc: 0, t: 0 };
+    by[k].cn += r.confusion.n; by[k].cc += r.confusion.corrected;
+    by[k].bn += r.boundary.n; by[k].bc += r.boundary.corrected;
+    by[k].t += r.total_time_s || 0;
+  });
+  let out = `Session complete — group ${res.group}\n\nMeasured trials by condition:\n`;
+  for (const [c, v] of Object.entries(by))
+    out += `  ${c.padEnd(9)} confusion ${v.cc}/${v.cn}  boundary ${v.bc}/${v.bn}`
+      + `  time ${v.t.toFixed(1)}s\n`;
+  out += `\nFull per-trial results saved to logs/${res.results.length ? "" : ""}...`;
+  $("summary").hidden = false; $("summary").textContent = out;
+  setStatus("session complete");
+}
+
+async function begin() {
+  try {
+    const g = $("group").value;
+    const cur = await api("/api/protocol/start",
+      { participant: $("pid").value, ...(g !== "" ? { group: Number(g) } : {}) });
+    showTrial(cur);
+  } catch (e) { alert("begin error: " + e.message); }
+}
+
+async function finishTrial() {
+  running = false; clearInterval(timerId); clearInterval(pollId);
+  try { showTrial(await api("/api/protocol/next", {})); }
+  catch (e) { setStatus("finish error: " + e.message); }
+}
+
+$("begin").onclick = begin;
+$("finish").onclick = finishTrial;
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space" && ws) { e.preventDefault(); ws.playPause(); }
 });

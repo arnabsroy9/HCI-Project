@@ -1,0 +1,126 @@
+{
+  "clip": "clipT",
+  "duration": 60.0,
+  "sample_rate": 16000,
+  "speakers": [
+    "S1",
+    "S2",
+    "S3"
+  ],
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 2.728,
+      "speaker": "S3"
+    },
+    {
+      "id": 1,
+      "start": 2.728,
+      "end": 4.809,
+      "speaker": "S2"
+    },
+    {
+      "id": 2,
+      "start": 4.809,
+      "end": 8.869,
+      "speaker": "S2"
+    },
+    {
+      "id": 3,
+      "start": 8.869,
+      "end": 10.589,
+      "speaker": "S3"
+    },
+    {
+      "id": 4,
+      "start": 10.589,
+      "end": 15.35,
+      "speaker": "S1"
+    },
+    {
+      "id": 5,
+      "start": 15.35,
+      "end": 17.652,
+      "speaker": "S2"
+    },
+    {
+      "id": 6,
+      "start": 17.652,
+      "end": 21.255,
+      "speaker": "S3"
+    },
+    {
+      "id": 7,
+      "start": 21.255,
+      "end": 24.474,
+      "speaker": "S3"
+    },
+    {
+      "id": 8,
+      "start": 24.474,
+      "end": 29.116,
+      "speaker": "S2"
+    },
+    {
+      "id": 9,
+      "start": 29.116,
+      "end": 30.415,
+      "speaker": "S1"
+    },
+    {
+      "id": 10,
+      "start": 30.415,
+      "end": 32.204,
+      "speaker": "S2"
+    },
+    {
+      "id": 11,
+      "start": 32.204,
+      "end": 35.075,
+      "speaker": "S1"
+    },
+    {
+      "id": 12,
+      "start": 35.075,
+      "end": 38.83,
+      "speaker": "S3"
+    },
+    {
+      "id": 13,
+      "start": 38.83,
+      "end": 41.529,
+      "speaker": "S2"
+    },
+    {
+      "id": 14,
+      "start": 41.529,
+      "end": 46.868,
+      "speaker": "S2"
+    },
+    {
+      "id": 15,
+      "start": 46.868,
+      "end": 50.293,
+      "speaker": "S3"
+    },
+    {
+      "id": 16,
+      "start": 50.293,
+      "end": 54.428,
+      "speaker": "S2"
+    },
+    {
+      "id": 17,
+      "start": 54.428,
+      "end": 58.636,
+      "speaker": "S3"
+    },
+    {
+      "id": 18,
+      "start": 58.636,
+      "end": 60.0,
+      "speaker": "S1"
+    }
+  ]
+}

@@ -6,8 +6,16 @@ body {
 }
 h1 { font-size: 1.15rem; margin: 0 0 .6rem; }
 .cond {
-  font-size: .7rem; font-weight: 600; vertical-align: middle;
-  background: #457b9d; color: #fff; padding: .15rem .5rem; border-radius: 4px;
+  font-size: .72rem; font-weight: 700; vertical-align: middle;
+  color: #fff; padding: .1rem .45rem; border-radius: 4px;
+}
+.cond.gui { background: #457b9d; }
+.cond.tangible { background: #b5651d; }
+.progress { font-size: .95rem; }
+.progress b { color: #2a9d8f; }
+.tnote {
+  background: #fff4e6; border: 1px solid #b5651d; color: #7a4410;
+  padding: .6rem .9rem; border-radius: 6px; margin: .8rem 0; font-weight: 500;
 }
 .bar { display: flex; gap: .8rem; align-items: center; flex-wrap: wrap; }
 .bar label { display: flex; gap: .3rem; align-items: center; }

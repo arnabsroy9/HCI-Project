@@ -1,30 +1,40 @@
-<!-- Shared-core GUI condition. wavesurfer.js is vendored locally. -->
+<!-- Protocol-aware study frontend. wavesurfer.js is vendored locally. -->
 <meta charset="utf-8">
-<title>Diarization correction — GUI condition</title>
+<title>Diarization correction study</title>
 <link rel="stylesheet" href="/static/style.css">
 
 <div id="app">
   <header>
-    <h1>Diarization correction <span class="cond">GUI condition</span></h1>
-    <div class="bar">
-      <label>Participant <input id="pid" value="pilot01" size="10"></label>
-      <label>Clip
-        <select id="clip"><option value="clipA">clipA</option></select>
+    <h1>Diarization correction study</h1>
+    <div class="bar" id="setup">
+      <label>Participant <input id="pid" value="p01" size="10"></label>
+      <label>Group
+        <select id="group">
+          <option value="">auto</option>
+          <option>0</option><option>1</option><option>2</option><option>3</option>
+        </select>
       </label>
-      <button id="start">Start trial</button>
-      <button id="finish" disabled>Finish &amp; score</button>
+      <button id="begin">Begin session</button>
+    </div>
+    <div class="bar" id="trialbar" hidden>
+      <span id="progress" class="progress"></span>
       <span id="timer" class="timer">00:00</span>
-      <span id="status" class="status">enter participant, press Start</span>
+      <button id="finish">Finish trial</button>
+      <span id="status" class="status"></span>
     </div>
   </header>
+
+  <div id="tnote" class="tnote" hidden>
+    Tangible condition — correct with the physical tokens. This screen is a
+    read-only display and updates as you move them.
+  </div>
 
   <div id="legend"></div>
   <div id="wave"></div>
 
-  <div class="help">
-    <b>Click</b> a segment to cycle its speaker (fixes a confusion error).
-    <b>Drag a segment edge</b> to move a boundary. <b>Spacebar</b> plays / pauses.
-    The view is fixed to the whole clip; there is no zoom (matched across
+  <div class="help" id="ghelp" hidden>
+    <b>Click</b> a segment to cycle its speaker. <b>Drag a segment edge</b> to
+    move a boundary. <b>Spacebar</b> plays / pauses. No zoom (matched across
     conditions by design).
   </div>
 
