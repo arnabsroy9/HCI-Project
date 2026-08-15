@@ -34,7 +34,14 @@ One JSON object per line. Every record carries wall-clock and elapsed time:
 {"t_iso":"...","t_epoch":...,"elapsed_s":16.4,"event":"op","source":"mouse","op":{...}}
 ```
 
-Events: `session_start`, `op`, `session_finish` (with the scored summary).
+Events: `session_start`, `op`, `playback`, `trial_finish` / `session_finish`.
+
+Playback events (`play`, `pause`, `seek_start`, `seek_end`, `seek`) let analysis
+split trial time into **listening** (play→pause), **seeking** (start→end), and
+**active correction time = total − seek**. Because both conditions log the same
+events, navigation time is subtracted identically, so different playback
+mechanisms (mouse slider vs. token transport) do not confound correction time.
+`analyze.py` writes these to `trials.csv`.
 
 ## Stimulus contract (stimuli/&lt;clip&gt;/)
 
@@ -52,6 +59,7 @@ Events: `session_start`, `op`, `session_finish` (with the scored summary).
 | POST | `/api/session/start` | `{participant, condition, clip}` → fresh trial |
 | POST | `/api/op` | apply + log one operation |
 | GET | `/api/state` | current segments + version |
+| POST | `/api/playback` | log a playback event (`play`/`pause`/`seek`/`seek_start`/`seek_end`) + `media_t`; updates shared playback state the tangible display follows |
 | POST | `/api/session/finish` | score vs answer key, write summary |
 | POST | `/api/protocol/start` | `{participant, group?}` → build counterbalanced plan, start trial 1 |
 | GET | `/api/protocol/current` | current trial (index, phase, condition, clip, segments) |

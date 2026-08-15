@@ -67,6 +67,27 @@ def replay(jsonl):
             if ok:
                 fixed_at[j] = r["elapsed_s"]
 
+    # time decomposition from the playback log, so analysis can report
+    # active correction time = total - seek (navigation subtracted identically
+    # in both conditions). Listening is play->pause; seeking is start->end.
+    pb_events = [(r["elapsed_s"], r["pb"]) for r in lines if r.get("event") == "playback"]
+    finish = next((r for r in lines if r.get("event") in ("session_finish", "trial_finish")), None)
+    total = finish["elapsed_s"] if finish else (lines[-1]["elapsed_s"] if lines else 0.0)
+    listen = seek = 0.0
+    ps = ss = None
+    for el, ev in pb_events + [(total, "_end")]:
+        if ev == "play":
+            ps = el
+        elif ev in ("pause", "_end") and ps is not None:
+            listen += el - ps; ps = None
+        if ev == "seek_start":
+            ss = el
+        elif ev in ("seek_end", "_end") and ss is not None:
+            seek += el - ss; ss = None
+    times = {"total_time_s": round(total, 3), "seek_time_s": round(seek, 3),
+             "listen_time_s": round(listen, 3),
+             "active_correction_time_s": round(total - seek, 3)}
+
     meta = {"participant": start["participant"], "condition": start["condition"],
             "clip": clip, "phase": start.get("phase", "single"),
             "log": os.path.basename(jsonl)}
@@ -77,7 +98,7 @@ def replay(jsonl):
                      "corrected": int(ok),
                      "residual_s": resid if e["type"] == "boundary" else "",
                      "correction_time_s": fixed_at.get(j, "")})
-    return meta, rows
+    return meta, rows, times
 
 
 def main():
@@ -90,12 +111,12 @@ def main():
         res = replay(jl)
         if not res:
             continue
-        meta, rows = res
+        meta, rows, times = res
         all_rows.extend(rows)
         conf = [r for r in rows if r["error_type"] == "confusion"]
         bnd = [r for r in rows if r["error_type"] == "boundary"]
         resids = [r["residual_s"] for r in bnd if r["corrected"]]
-        trials.append({**meta,
+        trials.append({**meta, **times,
                        "conf_acc": round(sum(r["corrected"] for r in conf) / len(conf), 3) if conf else "",
                        "bnd_acc": round(sum(r["corrected"] for r in bnd) / len(bnd), 3) if bnd else "",
                        "bnd_mean_residual_s": round(sum(resids) / len(resids), 3) if resids else ""})

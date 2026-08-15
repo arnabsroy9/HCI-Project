@@ -107,8 +107,17 @@ function initWave() {
   $("play").textContent = "▶ Play";
   ws.on("decode", () => updateTime(0));
   ws.on("timeupdate", updateTime);
-  ws.on("play", () => ($("play").textContent = "⏸ Pause"));
-  ws.on("pause", () => ($("play").textContent = "▶ Play"));
+  ws.on("play", () => { $("play").textContent = "⏸ Pause"; pb("play", ws.getCurrentTime()); });
+  ws.on("pause", () => { $("play").textContent = "▶ Play"; pb("pause", ws.getCurrentTime()); });
+}
+
+// log a playback event so analysis can subtract navigation from total time
+function pb(event, media_t) {
+  if (!running) return;
+  fetch("/api/playback", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event, media_t, source: mode === "gui" ? "mouse" : "aruco" }),
+  }).catch(() => {});
 }
 
 function tick() {
@@ -184,13 +193,15 @@ $("begin").onclick = begin;
 $("finish").onclick = finishTrial;
 $("play").onclick = () => ws && ws.playPause();
 $("seek").oninput = () => {
-  seeking = true;
   const d = (ws && ws.getDuration()) || 0;
+  if (!seeking) { seeking = true; pb("seek_start", (ws && ws.getCurrentTime()) || 0); }
   $("time").textContent = `${fmt(($("seek").value / 1000) * d)} / ${fmt(d)}`;
 };
 $("seek").onchange = () => {
   const d = (ws && ws.getDuration()) || 0;
-  if (ws) ws.setTime(($("seek").value / 1000) * d);
+  const t = ($("seek").value / 1000) * d;
+  if (ws) ws.setTime(t);
+  pb("seek", t); pb("seek_end", t);
   seeking = false;
 };
 document.addEventListener("keydown", (e) => {

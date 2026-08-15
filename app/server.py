@@ -36,6 +36,7 @@ STATE = {
     "answer_key": None, "version": 0,
     "session": None,    # {participant, condition, phase, started_epoch, log_path}
     "protocol": None,   # {participant, group, trials, idx, results}
+    "playback": {"playing": False, "media_t": 0.0, "pv": 0},
 }
 
 # --- counterbalanced within-subjects protocol ---
@@ -74,7 +75,8 @@ def start_session(participant, condition, clip, phase="single", trial_index=None
                  answer_key=key, version=0,
                  session={"participant": participant, "condition": condition,
                           "clip": clip, "phase": phase, "trial_index": trial_index,
-                          "started_epoch": time.time(), "log_path": log_path})
+                          "started_epoch": time.time(), "log_path": log_path},
+                 playback={"playing": False, "media_t": 0.0, "pv": 0})
     log_event({"event": "session_start", "participant": participant,
                "condition": condition, "clip": clip, "phase": phase,
                "trial_index": trial_index})
@@ -84,7 +86,22 @@ def start_session(participant, condition, clip, phase="single", trial_index=None
 def session_state():
     return {"version": STATE["version"], "clip": STATE["clip"],
             "duration": STATE["duration"], "speakers": STATE["speakers"],
-            "segments": STATE["segments"], "session": STATE["session"]}
+            "segments": STATE["segments"], "session": STATE["session"],
+            "playback": STATE["playback"]}
+
+
+def playback_event(ev, media_t, source):
+    """Log a playback event and update shared playback state. Play/pause/seek
+    change the state the tangible display follows; seek_start/seek_end just
+    time the scrubbing. The log lets analysis subtract navigation from total."""
+    pb = STATE["playback"]
+    if ev in ("play", "pause", "seek"):
+        pb["playing"] = (ev == "play")
+    if media_t is not None:
+        pb["media_t"] = float(media_t)
+    pb["pv"] += 1
+    log_event({"event": "playback", "pb": ev, "media_t": media_t, "source": source})
+    return {"pv": pb["pv"], "playback": pb}
 
 
 def build_plan(participant, group=None):
@@ -310,6 +327,13 @@ class Handler(BaseHTTPRequestHandler):
                                "op": body})
                     return self._json(200, {"version": STATE["version"],
                                             "segments": STATE["segments"]})
+            if u.path == "/api/playback":
+                with LOCK:
+                    if not STATE["session"]:
+                        return self._json(409, {"error": "no active session"})
+                    return self._json(200, playback_event(
+                        body.get("event"), body.get("media_t"),
+                        body.get("source", "mouse")))
             if u.path == "/api/session/finish":
                 with LOCK:
                     summary = score()
