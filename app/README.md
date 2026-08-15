@@ -52,7 +52,21 @@ logs/              per-trial .jsonl + _summary.json  (the dataset)
 - [x] GUI condition (wavesurfer.js): reassign, move_boundary, playback, scoring
 - [x] Synthetic stimulus generator + answer key + error injection
 - [x] Analysis: error-level table with per-error correction time
-- [ ] Tangible condition: point the ArUco tracker (`../rig/`) at `/api/op`
-      with `source:"aruco"` — same schema, no backend change
+- [x] Tangible condition: `../rig/tangible_input.py` emits the same ops with
+      `source:"aruco"` (dwell-based commit); validated via `--sim` without the
+      camera, ready to swap in the live C920 once mounted
 - [ ] Real Bengali-Loop audio in place of synthetic clips
 - [ ] Counterbalanced multi-clip session runner
+
+## Tangible condition (from `rig/`)
+
+```bash
+# 1. start a tangible session
+curl -X POST http://localhost:8000/api/session/start \
+     -d '{"participant":"p01","condition":"tangible","clip":"clipA"}'
+# 2a. live camera (needs the mounted C920):
+..\.venv\Scripts\python.exe rig\tangible_input.py --duration 60
+# 2b. or a scripted dry-run without hardware:
+..\.venv\Scripts\python.exe rig\tangible_input.py --sim rig\demo_sim.json --duration 60
+# 3. finish & score, then analyze as above.
+```
