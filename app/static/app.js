@@ -12,9 +12,17 @@ const rgba = (hex, a) => {
 
 let ws, regions, segments = [], speakers = [], clip = "";
 let mode = "gui", running = false, t0 = 0, timerId = null, pollId = null, lastVersion = 0;
+let seeking = false;
 const byId = new Map();
 const $ = (id) => document.getElementById(id);
 const setStatus = (m) => ($("status").textContent = m);
+const fmt = (s) => `${(s / 60) | 0}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+function updateTime(cur) {
+  const d = (ws && ws.getDuration()) || 0;
+  if (!seeking) $("seek").value = d ? String(Math.round((cur / d) * 1000)) : "0";
+  $("time").textContent = `${fmt(cur || 0)} / ${fmt(d)}`;
+}
 
 async function api(path, body) {
   const r = await fetch(path, {
@@ -95,6 +103,12 @@ function initWave() {
   ws.on("decode", buildRegions);
   regions.on("region-clicked", (r, e) => { e.stopPropagation(); onReassign(r); });
   regions.on("region-updated", (r, side) => onBoundary(r, side));
+  // transport
+  $("play").textContent = "▶ Play";
+  ws.on("decode", () => updateTime(0));
+  ws.on("timeupdate", updateTime);
+  ws.on("play", () => ($("play").textContent = "⏸ Pause"));
+  ws.on("pause", () => ($("play").textContent = "▶ Play"));
 }
 
 function tick() {
@@ -168,6 +182,19 @@ async function finishTrial() {
 
 $("begin").onclick = begin;
 $("finish").onclick = finishTrial;
+$("play").onclick = () => ws && ws.playPause();
+$("seek").oninput = () => {
+  seeking = true;
+  const d = (ws && ws.getDuration()) || 0;
+  $("time").textContent = `${fmt(($("seek").value / 1000) * d)} / ${fmt(d)}`;
+};
+$("seek").onchange = () => {
+  const d = (ws && ws.getDuration()) || 0;
+  if (ws) ws.setTime(($("seek").value / 1000) * d);
+  seeking = false;
+};
 document.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && ws) { e.preventDefault(); ws.playPause(); }
+  if (e.code === "Space" && ws && e.target.tagName !== "INPUT") {
+    e.preventDefault(); ws.playPause();
+  }
 });

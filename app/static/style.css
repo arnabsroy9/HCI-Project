@@ -33,6 +33,10 @@ button:disabled { opacity: .45; cursor: default; }
   background: #fff; border: 1px solid #ddd; border-radius: 6px;
   padding: .3rem; min-height: 140px;
 }
+#transport { display: flex; align-items: center; gap: .7rem; margin: .5rem 0 0; }
+#transport #play { min-width: 92px; }
+#seek { flex: 1; cursor: pointer; }
+.time { font-variant-numeric: tabular-nums; color: #333; min-width: 96px; text-align: right; }
 .help { margin: .9rem 0; color: #444; font-size: .9rem; }
 .help b { color: #111; }
 #summary {
