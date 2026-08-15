@@ -40,9 +40,20 @@ STATE = {
 
 # --- counterbalanced within-subjects protocol ---
 CONDITIONS = ["gui", "tangible"]
+# Defaults use the synthetic clips (always present). Drop a stimuli/protocol.json
+# {"train_clip":..., "meas_set1":[...], "meas_set2":[...]} to run on other clips
+# (e.g. the real Bengali-Loop set) without editing code.
 TRAIN_CLIP = "clipT"
 MEAS_SET1 = ["clipA", "clipB"]
 MEAS_SET2 = ["clipC", "clipD"]
+
+
+def clip_config():
+    path = os.path.join(STIMULI, "protocol.json")
+    if os.path.exists(path):
+        c = json.load(open(path))
+        return c["train_clip"], c["meas_set1"], c["meas_set2"]
+    return TRAIN_CLIP, MEAS_SET1, MEAS_SET2
 
 
 # ---------- stimulus / session ----------
@@ -82,14 +93,15 @@ def build_plan(participant, group=None):
     block precedes each condition's measured trials (novelty control)."""
     if group is None:
         group = sum(ord(c) for c in participant) % 4
+    train_clip, set1, set2 = clip_config()
     order = CONDITIONS if not (group & 1) else CONDITIONS[::-1]
     if not (group & 2):
-        clips = {"gui": MEAS_SET1, "tangible": MEAS_SET2}
+        clips = {"gui": set1, "tangible": set2}
     else:
-        clips = {"gui": MEAS_SET2, "tangible": MEAS_SET1}
+        clips = {"gui": set2, "tangible": set1}
     trials = []
     for cond in order:
-        trials.append({"phase": "training", "condition": cond, "clip": TRAIN_CLIP})
+        trials.append({"phase": "training", "condition": cond, "clip": train_clip})
         for cl in clips[cond]:
             trials.append({"phase": "measured", "condition": cond, "clip": cl})
     return group, trials
