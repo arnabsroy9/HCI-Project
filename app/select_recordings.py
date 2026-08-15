@@ -58,6 +58,8 @@ def load_csv(path, recs):
                 s, e = parse_time(row[sc]), parse_time(row[ec])
             except (TypeError, ValueError, KeyError):
                 continue
+            if e <= s:                          # skip inverted / zero-length rows
+                continue
             spk = str(row[pc]).strip()
             rid = str(row[rc]).strip() if rc and row.get(rc) else base
             recs[rid].append((s, e, spk))
@@ -79,10 +81,26 @@ def analyze(segs):
             "overlaps": overlaps}
 
 
-def best_window(segs, win, need):
-    """Best clip window (by turn count) containing EXACTLY `need` speakers.
-    Long recordings have many speakers overall, but the study needs a clip
-    where exactly `need` of them are talking."""
+def union_coverage(intervals):
+    """Total time covered by the union of intervals (overlaps counted once)."""
+    cov = 0.0; cs = ce = None
+    for s, e in sorted(intervals):
+        if cs is None:
+            cs, ce = s, e
+        elif s <= ce:
+            ce = max(ce, e)
+        else:
+            cov += ce - cs; cs, ce = s, e
+    if cs is not None:
+        cov += ce - cs
+    return cov
+
+
+def best_window(segs, win, need, min_turns=5):
+    """Best clip window containing EXACTLY `need` speakers, chosen by true
+    (union) SPEECH COVERAGE. Also reports overlap (sum of durations minus the
+    union), since real diarization has simultaneous speech our single-speaker
+    timeline cannot represent -- low-overlap windows are preferred."""
     segs = sorted(segs)
     t1 = max(e for _, e, _ in segs)
     best = None
@@ -90,11 +108,17 @@ def best_window(segs, win, need):
         en = st + win
         if en > t1:
             break
-        inwin = [g for g in segs if g[0] < en and g[1] > st]
-        if len(set(g[2] for g in inwin)) == need:
+        inwin = [(max(s, st), min(e, en), spk) for s, e, spk in segs if s < en and e > st]
+        cnt = {}
+        for _, _, spk in inwin:
+            cnt[spk] = cnt.get(spk, 0) + 1
+        # exactly `need` speakers, each participating at least twice (no cameos)
+        if len(cnt) == need and min(cnt.values()) >= 2:
+            cov = union_coverage([(s, e) for s, e, _ in inwin])
+            overlap = sum(e - s for s, e, _ in inwin) - cov
             turns = sum(1 for i in range(1, len(inwin)) if inwin[i][2] != inwin[i - 1][2])
-            if best is None or turns > best[1]:
-                best = (round(st, 2), turns, need)
+            if turns >= min_turns and (best is None or cov > best[3]):
+                best = (round(st, 2), turns, need, round(cov, 1), round(overlap, 1))
     return best
 
 
@@ -103,6 +127,10 @@ def main():
     ap.add_argument("path", help="a labels CSV or a directory of CSVs")
     ap.add_argument("--speakers", type=int, default=3)
     ap.add_argument("--win", type=float, default=90.0, help="target clip seconds")
+    ap.add_argument("--min-speech", type=float, default=0.7,
+                    help="minimum speech fraction of the window (reject quiet clips)")
+    ap.add_argument("--max-overlap", type=float, default=0.15,
+                    help="max overlapping-speech fraction (reject heavy-overlap clips)")
     ap.add_argument("--out", default="selection.json")
     args = ap.parse_args()
 
@@ -130,25 +158,32 @@ def main():
                        if a["duration"] >= args.win else None)
         rows.append(a)
 
-    qual = [a for a in rows if a["window"] is not None]
-    qual.sort(key=lambda a: a["window"][1], reverse=True)   # by turns in the window
+    min_speech_s = args.min_speech * args.win
+    max_overlap_s = args.max_overlap * args.win
+    qual = [a for a in rows if a["window"] is not None
+            and a["window"][3] >= min_speech_s and a["window"][4] <= max_overlap_s]
+    qual.sort(key=lambda a: a["window"][3], reverse=True)   # by true speech coverage
 
-    print(f"{'recording':<16}{'rec_spk':>8}{'dur(s)':>8}{'segs':>6}"
-          f"  clip@start  win_turns")
-    print("-" * 60)
+    print(f"{'recording':<16}{'rec_spk':>8}{'clip@start':>11}{'turns':>7}"
+          f"{'speech%':>9}{'overlap_s':>10}")
+    print("-" * 62)
     for a in qual:
         w = a["window"]
-        print(f"{a['recording'][:15]:<16}{a['n_speakers']:>8}{a['duration']:>8.0f}"
-              f"{a['n_segments']:>6}  {w[0]:>8.1f}s{w[1]:>10}")
-    print(f"\n{len(qual)} recording(s) have a {args.win:.0f}s window with exactly "
-          f"{args.speakers} speakers (rec_spk = speakers in the whole recording).")
+        print(f"{a['recording'][:15]:<16}{a['n_speakers']:>8}{w[0]:>10.1f}s{w[1]:>7}"
+              f"{100*w[3]/args.win:>8.0f}%{w[4]:>10.1f}")
+    print(f"\n{len(qual)} recording(s): {args.speakers} speakers, "
+          f">= {100*args.min_speech:.0f}% speech, <= {max_overlap_s:.0f}s overlap.")
     if not qual:
-        print("recording speaker counts:",
-              sorted((a["recording"][:12], a["n_speakers"]) for a in rows))
+        near = [a for a in rows if a["window"] is not None]
+        near.sort(key=lambda a: a["window"][3], reverse=True)
+        print("best coverage seen:",
+              [(a["recording"][:12], f"{100*a['window'][3]/args.win:.0f}%",
+                f"ovl {a['window'][4]:.0f}s") for a in near[:5]])
 
     sel = [{"recording": a["recording"], "n_speakers": a["n_speakers"],
-            "duration_s": round(a["duration"], 1), "turns_per_min": round(a["turns_per_min"], 1),
-            "clip_start_s": a["window"][0], "clip_len_s": args.win} for a in qual]
+            "clip_start_s": a["window"][0], "clip_len_s": args.win,
+            "speech_s": a["window"][3], "overlap_s": a["window"][4],
+            "turns": a["window"][1]} for a in qual]
     json.dump(sel, open(args.out, "w"), indent=2)
     print(f"-> wrote {args.out} ({len(sel)} candidates) for the importer/notebook")
 

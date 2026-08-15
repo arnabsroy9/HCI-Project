@@ -59,24 +59,62 @@ def cut_wav(src, dst, t0, length):
 
 
 def window_segments(segs, t0, win):
-    """Contiguous, window-relative, speakers relabeled S1/S2/S3."""
+    """Contiguous window-relative timeline, speakers relabeled S1/S2/S3, with
+    explicit "SIL" segments for non-speech gaps. Overlaps are resolved by
+    letting the earlier-starting speaker hold until they stop (our single-
+    speaker timeline cannot show simultaneous speech)."""
     w = sorted((max(s, t0) - t0, min(e, t0 + win) - t0, spk)
-               for s, e, spk in segs if s < t0 + win and e > t0)
+               for s, e, spk in segs if s < t0 + win and e > t0 and e > s)
     order = {}
     for _, _, spk in w:
         order.setdefault(spk, f"S{len(order) + 1}")
-    out, prev = [], 0.0
+    out, cursor = [], 0.0
     for s, e, spk in w:
-        s = prev
-        if e <= s + MIN_SEG:
+        s = max(s, cursor)                       # earlier speaker holds overlap
+        if e <= s:
             continue
+        if s - cursor > 0.05:                    # gap -> explicit silence
+            out.append({"start": round(cursor, 3), "end": round(s, 3), "speaker": "SIL"})
         out.append({"start": round(s, 3), "end": round(e, 3), "speaker": order[spk]})
-        prev = e
+        cursor = e
+    if win - cursor > 0.05:
+        out.append({"start": round(cursor, 3), "end": round(win, 3), "speaker": "SIL"})
     for i, seg in enumerate(out):
         seg["id"] = i
-    if out:
-        out[-1]["end"] = round(min(win, out[-1]["end"]), 3)
-    return out, sorted(set(order.values()))
+    speakers = sorted(set(s["speaker"] for s in out if s["speaker"] != "SIL"))
+    return out, speakers
+
+
+def inject_real(segs, speakers, n_conf, n_bound, rng):
+    """Confusion errors only on speaker (non-SIL) segments; boundary errors on
+    any internal boundary (speech-speech or speech-silence, both audible)."""
+    hyp = [dict(s) for s in segs]
+    errors = []
+    speaker_ids = [s["id"] for s in hyp if s["speaker"] != "SIL"]
+    for sid in rng.sample(speaker_ids, min(n_conf, len(speaker_ids))):
+        cor = hyp[sid]["speaker"]
+        wrong = rng.choice([s for s in speakers if s != cor])
+        hyp[sid]["speaker"] = wrong
+        errors.append({"type": "confusion", "segment_id": sid,
+                       "correct_speaker": cor, "wrong_speaker": wrong})
+    internal = list(range(len(hyp) - 1))
+    rng.shuffle(internal)
+    placed = 0
+    for i in internal:
+        if placed >= n_bound:
+            break
+        cor_t = hyp[i]["end"]
+        lo = hyp[i]["start"] + MIN_SEG
+        hi = hyp[i + 1]["end"] - MIN_SEG
+        if hi <= lo:
+            continue
+        wrong_t = round(min(max(cor_t + rng.uniform(0.3, 1.2) * rng.choice([-1, 1]), lo), hi), 3)
+        hyp[i]["end"] = wrong_t
+        hyp[i + 1]["start"] = wrong_t
+        errors.append({"type": "boundary", "boundary_index": i,
+                       "correct_t": round(cor_t, 3), "wrong_t": wrong_t})
+        placed += 1
+    return hyp, errors
 
 
 def main():
@@ -104,15 +142,16 @@ def main():
             break
         t0 = entry["clip_start_s"]
         gt, speakers = window_segments(read_segs(csv_path), t0, args.clip_len)
+        n_speech = sum(1 for s in gt if s["speaker"] != "SIL")
         if len(speakers) != 3:
             print(f"  skip {rid}: window has {len(speakers)} speakers, not 3")
             continue
-        if len(gt) < args.boundary + 2:
-            print(f"  skip {rid}: only {len(gt)} segments")
+        if n_speech < args.confusion or len(gt) < args.boundary + 2:
+            print(f"  skip {rid}: {n_speech} speech / {len(gt)} total segments")
             continue
         import random
-        hyp, errors = ms.inject(gt, args.confusion, args.boundary,
-                                random.Random(args.seed + made))
+        hyp, errors = inject_real(gt, speakers, args.confusion, args.boundary,
+                                  random.Random(args.seed + made))
         clip = rid
         d = os.path.join(args.out, clip); os.makedirs(d, exist_ok=True)
         dur = cut_wav(wav, os.path.join(d, "audio.wav"), t0, args.clip_len)
@@ -121,8 +160,12 @@ def main():
                   open(os.path.join(d, "hypothesis.json"), "w"), indent=2)
         json.dump({"clip": clip, "segments": gt, "injected_errors": errors},
                   open(os.path.join(d, "answer_key.json"), "w"), indent=2)
+        sil_s = sum(s["end"] - s["start"] for s in gt if s["speaker"] == "SIL")
         json.dump({"clip": clip, "source": rid, "window_start_s": round(t0, 2),
-                   "duration": round(dur, 3), "n_speakers": 3, "n_segments": len(gt)},
+                   "duration": round(dur, 3), "n_speakers": 3, "n_segments": len(gt),
+                   "n_speech_segments": n_speech,
+                   "n_silence_segments": len(gt) - n_speech,
+                   "silence_s": round(sil_s, 1)},
                   open(os.path.join(d, "meta.json"), "w"), indent=2)
         made += 1
         print(f"  {clip}: @ {t0:.1f}s, {len(gt)} segments, "

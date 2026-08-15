@@ -9,6 +9,9 @@ const rgba = (hex, a) => {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
 };
+const SIL = "SIL";  // non-speech: neutral, not a reassignable speaker
+const colorFor = (spk) => (spk === SIL ? "rgba(120,120,120,0.13)" : rgba(COLORS[spk], 0.28));
+const labelFor = (spk) => (spk === SIL ? "" : spk);
 
 let ws, regions, segments = [], speakers = [], clip = "";
 let mode = "gui", running = false, t0 = 0, timerId = null, pollId = null, lastVersion = 0;
@@ -38,7 +41,8 @@ async function api(path, body) {
 function legend() {
   $("legend").innerHTML = speakers.map(
     (s) => `<span class="chip"><span class="swatch" style="background:${COLORS[s]}"></span>${s}</span>`
-  ).join("");
+  ).join("") +
+    `<span class="chip"><span class="swatch" style="background:rgba(120,120,120,0.35)"></span>silence</span>`;
 }
 
 function buildRegions() {
@@ -48,11 +52,12 @@ function buildRegions() {
   segments.forEach((seg, idx) => {
     const r = regions.addRegion({
       id: String(seg.id), start: seg.start, end: seg.end,
-      content: seg.speaker, color: rgba(COLORS[seg.speaker], 0.28),
+      content: labelFor(seg.speaker), color: colorFor(seg.speaker),
       drag: false, resize: interactive,
       resizeStart: interactive && idx > 0,
       resizeEnd: interactive && idx < segments.length - 1,
     });
+    r._spk = seg.speaker;
     byId.set(seg.id, r);
   });
 }
@@ -64,8 +69,10 @@ function reconcile(newSegs) {
     if (!r) return;
     if (Math.abs(r.start - seg.start) > 1e-4 || Math.abs(r.end - seg.end) > 1e-4)
       r.setOptions({ start: seg.start, end: seg.end });
-    if (r.content?.textContent !== seg.speaker)
-      r.setOptions({ content: seg.speaker, color: rgba(COLORS[seg.speaker], 0.28) });
+    if (r._spk !== seg.speaker) {
+      r._spk = seg.speaker;
+      r.setOptions({ content: labelFor(seg.speaker), color: colorFor(seg.speaker) });
+    }
   });
 }
 
@@ -73,6 +80,7 @@ async function onReassign(region) {
   if (!running || mode !== "gui") return;
   const sid = Number(region.id);
   const cur = segments[sid].speaker;
+  if (cur === SIL) return;                        // silence is not reassignable
   const next = speakers[(speakers.indexOf(cur) + 1) % speakers.length];
   try {
     const res = await api("/api/op", { op: "reassign", segment: sid, speaker: next, source: "mouse" });
