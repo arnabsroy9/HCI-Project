@@ -59,8 +59,10 @@ logs/              per-trial .jsonl + _summary.json  (the dataset)
       before each condition, order + clip-set counterbalanced across 4 groups,
       per-participant results file; GUI trials interactive, tangible trials a
       read-only display that polls while the tracker drives ops
-- [~] Real Bengali-Loop audio: recording selector done (`select_recordings.py`);
-      Kaggle CLI vendored; importer (CSV+audio → stimulus contract) is next
+- [x] Real Bengali-Loop audio: selector + importer done and validated
+      end-to-end (download labels → pick 3-speaker windows → fetch a few audio
+      files → `import_kaggle.py` cuts + converts to the stimulus contract).
+      Real clips are gitignored (licensed); synthetic clips remain the default.
 
 ## Getting the real dataset (Bengali-Loop / DL Sprint 4.0)
 
@@ -81,9 +83,18 @@ full ~15 GB — the study needs only a couple of 3-speaker recordings.
    ```bash
    ..\.venv\Scripts\python.exe app\select_recordings.py <labels.csv> --speakers 3 --win 90
    ```
-4. **Download just those audio files** with `-f`, or clip them in a Kaggle
-   notebook (zero local download). The importer (next) converts the chosen
-   CSV + audio into `stimuli/<clip>/` in the existing contract.
+4. **Download just those audio files** with `-f` (paths look like
+   `diarization/diarization/train/audio/train_009.wav`), e.g.:
+   ```bash
+   ..\.venv\Scripts\kaggle.exe competitions download -c dl-sprint-4-0-bengali-speaker-diarization-challenge -f diarization/diarization/train/audio/train_009.wav -p data\audio
+   ```
+5. **Convert to stimuli** — cuts each selected window and writes real clips
+   into `stimuli/<recording>/` (gitignored):
+   ```bash
+   ..\.venv\Scripts\python.exe app\import_kaggle.py --clip-len 60
+   ```
+   Zero-local-download alternative: paste `app\kaggle_make_stimuli.py` into a
+   Kaggle notebook cell and download the small output zip.
 
 ## Run a full participant session (protocol)
 

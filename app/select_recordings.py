@@ -30,6 +30,17 @@ def find_col(fields, patterns):
     return None
 
 
+def parse_time(v):
+    """Seconds from a float string or HH:MM:SS / MM:SS (optional .ms)."""
+    v = str(v).strip()
+    if ":" in v:
+        sec = 0.0
+        for part in v.split(":"):
+            sec = sec * 60 + float(part)
+        return sec
+    return float(v)
+
+
 def load_csv(path, recs):
     with open(path, newline="", encoding="utf-8-sig") as f:
         r = csv.DictReader(f)
@@ -44,7 +55,7 @@ def load_csv(path, recs):
         base = os.path.splitext(os.path.basename(path))[0]
         for row in r:
             try:
-                s, e = float(row[sc]), float(row[ec])
+                s, e = parse_time(row[sc]), parse_time(row[ec])
             except (TypeError, ValueError, KeyError):
                 continue
             spk = str(row[pc]).strip()
@@ -69,7 +80,9 @@ def analyze(segs):
 
 
 def best_window(segs, win, need):
-    """Best clip window (by turn count) containing >= need speakers."""
+    """Best clip window (by turn count) containing EXACTLY `need` speakers.
+    Long recordings have many speakers overall, but the study needs a clip
+    where exactly `need` of them are talking."""
     segs = sorted(segs)
     t1 = max(e for _, e, _ in segs)
     best = None
@@ -78,10 +91,10 @@ def best_window(segs, win, need):
         if en > t1:
             break
         inwin = [g for g in segs if g[0] < en and g[1] > st]
-        if len(set(g[2] for g in inwin)) >= need:
+        if len(set(g[2] for g in inwin)) == need:
             turns = sum(1 for i in range(1, len(inwin)) if inwin[i][2] != inwin[i - 1][2])
             if best is None or turns > best[1]:
-                best = (round(st, 2), turns, len(inwin))
+                best = (round(st, 2), turns, need)
     return best
 
 
@@ -117,24 +130,21 @@ def main():
                        if a["duration"] >= args.win else None)
         rows.append(a)
 
-    qual = [a for a in rows
-            if a["n_speakers"] == args.speakers and a["window"] is not None]
-    qual.sort(key=lambda a: a["turns_per_min"], reverse=True)
+    qual = [a for a in rows if a["window"] is not None]
+    qual.sort(key=lambda a: a["window"][1], reverse=True)   # by turns in the window
 
-    print(f"{'recording':<26}{'spk':>4}{'dur(s)':>8}{'segs':>6}"
-          f"{'turns/min':>10}{'ovl':>5}  clip@start(turns)")
-    print("-" * 82)
+    print(f"{'recording':<16}{'rec_spk':>8}{'dur(s)':>8}{'segs':>6}"
+          f"  clip@start  win_turns")
+    print("-" * 60)
     for a in qual:
         w = a["window"]
-        print(f"{a['recording'][:25]:<26}{a['n_speakers']:>4}{a['duration']:>8.0f}"
-              f"{a['n_segments']:>6}{a['turns_per_min']:>10.1f}{a['overlaps']:>5}"
-              f"  {w[0]:.1f}s ({w[1]} turns)")
-    print(f"\n{len(qual)} recording(s) match exactly {args.speakers} speakers "
-          f"with a {args.win:.0f}s clip window.")
+        print(f"{a['recording'][:15]:<16}{a['n_speakers']:>8}{a['duration']:>8.0f}"
+              f"{a['n_segments']:>6}  {w[0]:>8.1f}s{w[1]:>10}")
+    print(f"\n{len(qual)} recording(s) have a {args.win:.0f}s window with exactly "
+          f"{args.speakers} speakers (rec_spk = speakers in the whole recording).")
     if not qual:
-        skip = sorted(rows, key=lambda a: abs(a["n_speakers"] - args.speakers))[:5]
-        print("closest by speaker count:",
-              [(a["recording"][:16], a["n_speakers"]) for a in skip])
+        print("recording speaker counts:",
+              sorted((a["recording"][:12], a["n_speakers"]) for a in rows))
 
     sel = [{"recording": a["recording"], "n_speakers": a["n_speakers"],
             "duration_s": round(a["duration"], 1), "turns_per_min": round(a["turns_per_min"], 1),

@@ -45,3 +45,10 @@ desktop.ini
 
 # Recompiled manuscript (regenerable from .tex)
 proposal-v2/tokens-on-a-timeline.pdf
+
+# Bengali-Loop / DL Sprint 4.0 data (licensed; do not commit)
+data/
+
+# Real Bengali-Loop-derived clips (licensed audio + annotations; keep local)
+app/stimuli/train_*/
+app/stimuli/test_*/
