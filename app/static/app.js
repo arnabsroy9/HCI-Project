@@ -15,7 +15,7 @@ const labelFor = (spk) => (spk === SIL ? "" : spk);
 
 let ws, regions, segments = [], speakers = [], clip = "";
 let mode = "gui", running = false, t0 = 0, timerId = null, pollId = null, lastVersion = 0;
-let seeking = false;
+let seeking = false, lastPv = -1;
 const byId = new Map();
 const $ = (id) => document.getElementById(id);
 const setStatus = (m) => ($("status").textContent = m);
@@ -119,9 +119,10 @@ function initWave() {
   ws.on("pause", () => { $("play").textContent = "▶ Play"; pb("pause", ws.getCurrentTime()); });
 }
 
-// log a playback event so analysis can subtract navigation from total time
+// log a playback event so analysis can subtract navigation from total time.
+// In tangible trials the tracker logs its own playback events, so skip here.
 function pb(event, media_t) {
-  if (!running) return;
+  if (!running || mode !== "gui") return;
   fetch("/api/playback", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ event, media_t, source: mode === "gui" ? "mouse" : "aruco" }),
@@ -134,10 +135,19 @@ function tick() {
     String((s / 60) | 0).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
 }
 
-async function poll() {                       // tangible: reflect tracker edits
+async function poll() {              // tangible: reflect tracker edits + playback
   try {
     const st = await api("/api/state");
     if (st.version !== lastVersion) { lastVersion = st.version; reconcile(st.segments); }
+    const p = st.playback;
+    if (p && p.pv !== lastPv) {
+      lastPv = p.pv;
+      if (ws) {
+        if (Math.abs((ws.getCurrentTime() || 0) - p.media_t) > 0.3) ws.setTime(p.media_t);
+        if (p.playing && !ws.isPlaying()) ws.play();
+        else if (!p.playing && ws.isPlaying()) ws.pause();
+      }
+    }
   } catch { /* ignore transient */ }
 }
 
@@ -156,8 +166,11 @@ function showTrial(cur) {
   running = true; t0 = Date.now();
   clearInterval(timerId); timerId = setInterval(tick, 200);
   clearInterval(pollId);
+  lastPv = -1;
+  $("play").disabled = mode !== "gui";        // tangible: playback via tokens only
+  $("seek").disabled = mode !== "gui";
   if (mode === "tangible") pollId = setInterval(poll, 300);
-  setStatus(mode === "gui" ? "correct with mouse" : "correct with tokens");
+  setStatus(mode === "gui" ? "correct with mouse" : "use the physical tokens");
 }
 
 function showResults(res) {

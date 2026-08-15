@@ -95,9 +95,11 @@ def playback_event(ev, media_t, source):
     change the state the tangible display follows; seek_start/seek_end just
     time the scrubbing. The log lets analysis subtract navigation from total."""
     pb = STATE["playback"]
-    if ev in ("play", "pause", "seek"):
+    if ev in ("play", "pause", "seek", "stop"):
         pb["playing"] = (ev == "play")
-    if media_t is not None:
+    if ev == "stop":
+        pb["media_t"] = 0.0
+    elif media_t is not None:
         pb["media_t"] = float(media_t)
     pb["pv"] += 1
     log_event({"event": "playback", "pb": ev, "media_t": media_t, "source": source})
