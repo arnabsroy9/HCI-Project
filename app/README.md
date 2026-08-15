@@ -59,7 +59,31 @@ logs/              per-trial .jsonl + _summary.json  (the dataset)
       before each condition, order + clip-set counterbalanced across 4 groups,
       per-participant results file; GUI trials interactive, tangible trials a
       read-only display that polls while the tracker drives ops
-- [ ] Real Bengali-Loop audio in place of synthetic clips
+- [~] Real Bengali-Loop audio: recording selector done (`select_recordings.py`);
+      Kaggle CLI vendored; importer (CSV+audio → stimulus contract) is next
+
+## Getting the real dataset (Bengali-Loop / DL Sprint 4.0)
+
+The diarization corpus (24 rec, 22 h, CSV `start,end,speaker` labels) is
+released via the Kaggle competition
+`dl-sprint-4-0-bengali-speaker-diarization-challenge`. You do NOT need the
+full ~15 GB — the study needs only a couple of 3-speaker recordings.
+
+1. **Accept the competition rules** on Kaggle and put an API token at
+   `~/.kaggle/kaggle.json` (both are account actions only you can do).
+2. **List files, download only the label CSVs** (kilobytes):
+   ```bash
+   ..\.venv\Scripts\kaggle.exe competitions files -c dl-sprint-4-0-bengali-speaker-diarization-challenge
+   ..\.venv\Scripts\kaggle.exe competitions download -c dl-sprint-4-0-bengali-speaker-diarization-challenge -f <labels.csv>
+   ```
+3. **Pick which recordings to fetch** — flags exactly-N-speaker, turn-dense
+   recordings and suggests a clip window, so you fetch only 2-3 audio files:
+   ```bash
+   ..\.venv\Scripts\python.exe app\select_recordings.py <labels.csv> --speakers 3 --win 90
+   ```
+4. **Download just those audio files** with `-f`, or clip them in a Kaggle
+   notebook (zero local download). The importer (next) converts the chosen
+   CSV + audio into `stimuli/<clip>/` in the existing contract.
 
 ## Run a full participant session (protocol)
 
