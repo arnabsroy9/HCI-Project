@@ -1,0 +1,27 @@
+{
+  "clip": "clipBnB",
+  "duration": 60.0,
+  "n_speakers": 3,
+  "audio": "bengali_edge_tts",
+  "voices": {
+    "S1": [
+      "bn-IN-BashkarNeural",
+      "-25Hz",
+      "+0%"
+    ],
+    "S2": [
+      "bn-BD-NabanitaNeural",
+      "-45Hz",
+      "+0%"
+    ],
+    "S3": [
+      "bn-IN-TanishaaNeural",
+      "+0Hz",
+      "+0%"
+    ]
+  },
+  "n_confusion": 4,
+  "n_boundary": 4,
+  "n_segments": 24,
+  "seed": 12
+}

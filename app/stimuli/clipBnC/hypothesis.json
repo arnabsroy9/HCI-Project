@@ -1,0 +1,150 @@
+{
+  "clip": "clipBnC",
+  "duration": 60.0,
+  "sample_rate": 16000,
+  "speakers": [
+    "S1",
+    "S2",
+    "S3"
+  ],
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 2.191,
+      "speaker": "S1"
+    },
+    {
+      "id": 1,
+      "start": 2.191,
+      "end": 4.199,
+      "speaker": "S2"
+    },
+    {
+      "id": 2,
+      "start": 4.199,
+      "end": 6.169,
+      "speaker": "S3"
+    },
+    {
+      "id": 3,
+      "start": 6.169,
+      "end": 8.659,
+      "speaker": "S1"
+    },
+    {
+      "id": 4,
+      "start": 8.659,
+      "end": 9.305,
+      "speaker": "S2"
+    },
+    {
+      "id": 5,
+      "start": 9.305,
+      "end": 12.301,
+      "speaker": "S1"
+    },
+    {
+      "id": 6,
+      "start": 12.301,
+      "end": 15.092,
+      "speaker": "S1"
+    },
+    {
+      "id": 7,
+      "start": 15.092,
+      "end": 16.469,
+      "speaker": "S2"
+    },
+    {
+      "id": 8,
+      "start": 16.469,
+      "end": 18.853,
+      "speaker": "S2"
+    },
+    {
+      "id": 9,
+      "start": 18.853,
+      "end": 21.052,
+      "speaker": "S1"
+    },
+    {
+      "id": 10,
+      "start": 21.052,
+      "end": 22.713,
+      "speaker": "S2"
+    },
+    {
+      "id": 11,
+      "start": 22.713,
+      "end": 24.677,
+      "speaker": "S1"
+    },
+    {
+      "id": 12,
+      "start": 24.677,
+      "end": 26.682,
+      "speaker": "S3"
+    },
+    {
+      "id": 13,
+      "start": 26.682,
+      "end": 28.611,
+      "speaker": "S2"
+    },
+    {
+      "id": 14,
+      "start": 28.611,
+      "end": 31.035,
+      "speaker": "S1"
+    },
+    {
+      "id": 15,
+      "start": 31.035,
+      "end": 33.541,
+      "speaker": "S3"
+    },
+    {
+      "id": 16,
+      "start": 33.541,
+      "end": 35.085,
+      "speaker": "S2"
+    },
+    {
+      "id": 17,
+      "start": 35.085,
+      "end": 36.745,
+      "speaker": "S1"
+    },
+    {
+      "id": 18,
+      "start": 36.745,
+      "end": 40.173,
+      "speaker": "S3"
+    },
+    {
+      "id": 19,
+      "start": 40.173,
+      "end": 42.093,
+      "speaker": "S2"
+    },
+    {
+      "id": 20,
+      "start": 42.093,
+      "end": 43.704,
+      "speaker": "S1"
+    },
+    {
+      "id": 21,
+      "start": 43.704,
+      "end": 45.712,
+      "speaker": "S1"
+    },
+    {
+      "id": 22,
+      "start": 45.712,
+      "end": 60.0,
+      "speaker": "S2"
+    }
+  ]
+}

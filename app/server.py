@@ -18,7 +18,7 @@
 #  Run:  python server.py         (then open http://localhost:8000)
 # =============================================================
 
-import json, os, threading, time, datetime, urllib.parse
+import json, os, sys, subprocess, atexit, threading, time, datetime, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -57,6 +57,82 @@ def clip_config():
     return TRAIN_CLIP, MEAS_SET1, MEAS_SET2
 
 
+# ---------- tangible tracker (auto-managed camera process) ----------
+# For a tangible trial the server itself launches the ArUco tracker with the
+# right clip duration and stops it when the trial ends, so the operator never
+# runs a second terminal or matches a --duration by hand. The tracker POSTs a
+# heartbeat to /api/tracker so the browser can show a live "camera OK" dot.
+RIG = os.path.join(os.path.dirname(BASE), "rig")
+PORT = int(os.environ.get("PORT", "8000"))
+CAMERA_INDEX = int(os.environ.get("CAMERA_INDEX", "1"))
+TRACKER = {"proc": None, "error": None, "hb": None, "hb_epoch": 0.0}
+
+
+def start_tracker(duration):
+    """Spawn the tracker for a tangible trial (idempotent: stops any old one)."""
+    stop_tracker()
+    TRACKER.update(error=None, hb=None, hb_epoch=0.0)
+    script = os.path.join(RIG, "tangible_input.py")
+    cmd = [sys.executable, script, "--duration", str(duration),
+           "--server", f"http://127.0.0.1:{PORT}", "--index", str(CAMERA_INDEX)]
+    try:
+        log = open(os.path.join(LOGS, "tracker.log"), "a", buffering=1)
+        log.write(f"\n--- tracker start {datetime.datetime.now():%H:%M:%S} "
+                  f"dur={duration} cam={CAMERA_INDEX} ---\n")
+        TRACKER["proc"] = subprocess.Popen(cmd, cwd=RIG, stdout=log,
+                                           stderr=subprocess.STDOUT)
+    except Exception as e:                       # spawn itself failed
+        TRACKER["error"] = str(e)
+
+
+def stop_tracker():
+    p = TRACKER.get("proc")
+    if p and p.poll() is None:
+        p.terminate()
+        try:
+            p.wait(timeout=2)
+        except Exception:
+            p.kill()
+    TRACKER["proc"] = None
+
+
+def tracker_status():
+    """Student-readable state of the camera process for the on-screen dot."""
+    p = TRACKER.get("proc")
+    running = bool(p and p.poll() is None)
+    hb, epoch = TRACKER.get("hb"), TRACKER.get("hb_epoch") or 0.0
+    fresh = bool(hb and (time.time() - epoch) < 2.0)
+    if TRACKER.get("error"):
+        state = "error"
+    elif not running:
+        state = "off"
+    elif not fresh:
+        state = "starting"                       # process up, no frames yet
+    elif hb.get("corners", 0) < 4:
+        state = "no_sheet"                        # can't see all 4 corners
+    else:
+        state = "tracking"
+    return {"state": state, "running": running,
+            "corners": (hb or {}).get("corners", 0),
+            "tokens": (hb or {}).get("tokens", 0),
+            "error": TRACKER.get("error")}
+
+
+atexit.register(stop_tracker)
+
+
+def check_source(source):
+    """Reject an input whose source does not match the active trial's condition,
+    so tangible ops can never land in a GUI trial (or vice-versa)."""
+    s = STATE["session"]
+    cond = s and s["condition"]
+    if source == "aruco" and cond != "tangible":
+        return f"tangible input ignored: the active trial is {cond}"
+    if source == "mouse" and cond not in ("gui", None):
+        return f"mouse input ignored: the active trial is {cond}"
+    return None
+
+
 # ---------- stimulus / session ----------
 def load_stimulus(clip):
     d = os.path.join(STIMULI, clip)
@@ -80,6 +156,12 @@ def start_session(participant, condition, clip, phase="single", trial_index=None
     log_event({"event": "session_start", "participant": participant,
                "condition": condition, "clip": clip, "phase": phase,
                "trial_index": trial_index})
+    # Auto-manage the camera: a tangible trial launches the tracker itself;
+    # any other trial makes sure no tracker is left running.
+    if condition == "tangible":
+        start_tracker(hyp["duration"])
+    else:
+        stop_tracker()
     return session_state()
 
 
@@ -87,7 +169,7 @@ def session_state():
     return {"version": STATE["version"], "clip": STATE["clip"],
             "duration": STATE["duration"], "speakers": STATE["speakers"],
             "segments": STATE["segments"], "session": STATE["session"],
-            "playback": STATE["playback"]}
+            "playback": STATE["playback"], "tracker": tracker_status()}
 
 
 def playback_event(ev, media_t, source):
@@ -141,6 +223,7 @@ def protocol_advance():
     p = STATE["protocol"]
     p["idx"] += 1
     if p["idx"] >= len(p["trials"]):
+        stop_tracker()                           # session over: release camera
         path = os.path.join(LOGS, f"{p['participant']}_session_"
                             f"{datetime.datetime.now():%Y%m%d_%H%M%S}.json")
         json.dump({"participant": p["participant"], "group": p["group"],
@@ -324,6 +407,9 @@ class Handler(BaseHTTPRequestHandler):
                 with LOCK:
                     if not STATE["session"]:
                         return self._json(409, {"error": "no active session"})
+                    err = check_source(body.get("source", "mouse"))
+                    if err:
+                        return self._json(409, {"error": err})
                     apply_op(body)
                     log_event({"event": "op", "source": body.get("source", "mouse"),
                                "op": body})
@@ -333,9 +419,18 @@ class Handler(BaseHTTPRequestHandler):
                 with LOCK:
                     if not STATE["session"]:
                         return self._json(409, {"error": "no active session"})
+                    err = check_source(body.get("source", "mouse"))
+                    if err:
+                        return self._json(409, {"error": err})
                     return self._json(200, playback_event(
                         body.get("event"), body.get("media_t"),
                         body.get("source", "mouse")))
+            if u.path == "/api/tracker":          # tracker heartbeat (camera dot)
+                with LOCK:
+                    TRACKER["hb"] = {"corners": int(body.get("corners", 0)),
+                                     "tokens": int(body.get("tokens", 0))}
+                    TRACKER["hb_epoch"] = time.time()
+                return self._json(200, {"ok": True})
             if u.path == "/api/session/finish":
                 with LOCK:
                     summary = score()
@@ -349,13 +444,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    port = int(os.environ.get("PORT", "8000"))
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"serving on http://localhost:{port}  (Ctrl+C to stop)")
+    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    print(f"serving on http://localhost:{PORT}  (Ctrl+C to stop)")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         srv.shutdown()
+    finally:
+        stop_tracker()
 
 
 if __name__ == "__main__":

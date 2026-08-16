@@ -207,6 +207,7 @@ def run_camera(server, index, mm_per_s, still, dwell, rearm, pbc=None):
     st = api(server, "/api/state")
     segments, speakers = st["segments"], st["speakers"]
     print("tracking... Ctrl+C to stop")
+    last_hb = 0.0
     try:
         while True:
             ok, frame = cap.read()
@@ -217,6 +218,13 @@ def run_camera(server, index, mm_per_s, still, dwell, rearm, pbc=None):
             cen = L.centers(corners, ids)
             _, toks, have = L.analyze(cen, mm_per_s)
             now = time.time()
+            if now - last_hb > 0.4:              # heartbeat -> browser camera dot
+                last_hb = now
+                try:
+                    api(server, "/api/tracker",
+                        {"corners": len(have), "tokens": len(toks)})
+                except Exception:
+                    pass
             seen = set()
             for mid, t, lane, x_mm, y_mm in toks:
                 seen.add(mid)

@@ -1,49 +1,93 @@
 <!-- Protocol-aware study frontend. wavesurfer.js is vendored locally. -->
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Diarization correction study</title>
 <link rel="stylesheet" href="/static/style.css">
 
 <div id="app">
   <header>
-    <h1>Diarization correction study</h1>
-    <div class="bar" id="setup">
-      <label>Participant <input id="pid" value="p01" size="10"></label>
+    <h1>Speaker-labelling study</h1>
+    <p class="tagline">Fix the computer's mistakes about <em>who is speaking, and when.</em></p>
+  </header>
+
+  <!-- ===== SETUP ===== -->
+  <section id="setup" class="card">
+    <h2>Before you start</h2>
+    <p class="lead">
+      You will do a short series of trials. In each trial you see a sound clip
+      with coloured blocks — one colour per speaker. The computer has already
+      guessed the labels, but some are <strong>wrong</strong>. Your job is to
+      correct them.
+    </p>
+    <ul class="lead points">
+      <li>Some trials are done with the <strong>mouse</strong>, others with the
+        <strong>physical tokens</strong> on the printed sheet. The screen tells
+        you which, every time.</li>
+      <li>The first trial of each kind is a <strong>practice</strong> run — it
+        does not count, so take your time to get used to it.</li>
+      <li>There is no right pace. When a trial looks fixed, press
+        <strong>Done</strong> to move on.</li>
+    </ul>
+    <div class="fields">
+      <label>Participant ID
+        <input id="pid" value="p01" size="10" autocomplete="off">
+      </label>
       <label>Group
         <select id="group">
           <option value="">auto</option>
           <option>0</option><option>1</option><option>2</option><option>3</option>
         </select>
+        <small>leave on “auto”</small>
       </label>
-      <button id="begin">Begin session</button>
     </div>
-    <div class="bar" id="trialbar" hidden>
-      <span id="progress" class="progress"></span>
-      <span id="timer" class="timer">00:00</span>
-      <button id="finish">Finish trial</button>
+    <button id="begin" class="primary big">Begin session →</button>
+    <p id="setuperr" class="err" hidden></p>
+  </section>
+
+  <!-- ===== TRIAL ===== -->
+  <section id="trial" class="card" hidden>
+    <div class="trialhead">
+      <div class="progresswrap"><div id="progressbar"></div></div>
+      <div class="trialmeta">
+        <span id="trialcount">Trial 1 of 1</span>
+        <span id="phasebadge" class="badge">practice</span>
+        <span id="timer" class="timer">00:00</span>
+      </div>
+    </div>
+
+    <div id="condbanner" class="condbanner">
+      <span id="condicon" class="condicon">🖱️</span>
+      <div class="condtext">
+        <div id="condtitle" class="condtitle">Mouse</div>
+        <div id="condsub" class="condsub"></div>
+      </div>
+      <span id="trackpill" class="trackpill" hidden></span>
+    </div>
+
+    <ol id="steps" class="steps"></ol>
+
+    <div id="legend" class="legend"></div>
+    <div id="wave"></div>
+    <div id="transport">
+      <button id="play" type="button">▶ Play</button>
+      <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="seek">
+      <span id="time" class="time">0:00 / 0:00</span>
+    </div>
+
+    <div class="trialfoot">
       <span id="status" class="status"></span>
+      <button id="finish" class="primary">Done — next →</button>
     </div>
-  </header>
+  </section>
 
-  <div id="tnote" class="tnote" hidden>
-    Tangible condition — correct with the physical tokens. This screen is a
-    read-only display and updates as you move them.
-  </div>
-
-  <div id="legend"></div>
-  <div id="wave"></div>
-  <div id="transport">
-    <button id="play" type="button">▶ Play</button>
-    <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="seek">
-    <span id="time" class="time">0:00 / 0:00</span>
-  </div>
-
-  <div class="help" id="ghelp" hidden>
-    <b>Click</b> a segment to cycle its speaker. <b>Drag a segment edge</b> to
-    move a boundary. <b>Spacebar</b> plays / pauses. No zoom (matched across
-    conditions by design).
-  </div>
-
-  <pre id="summary" hidden></pre>
+  <!-- ===== RESULTS ===== -->
+  <section id="results" class="card" hidden>
+    <h2>Session complete 🎉</h2>
+    <p class="lead">Thank you. Your results are saved. You can hand the computer
+      back to the researcher.</p>
+    <div id="resultsbody"></div>
+    <button id="restart" class="ghost">Start another participant</button>
+  </section>
 </div>
 
 <script type="module" src="/static/app.js"></script>

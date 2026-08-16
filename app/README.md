@@ -53,8 +53,11 @@ logs/              per-trial .jsonl + _summary.json  (the dataset)
 - [x] Synthetic stimulus generator + answer key + error injection
 - [x] Analysis: error-level table with per-error correction time
 - [x] Tangible condition: `../rig/tangible_input.py` emits the same ops with
-      `source:"aruco"` (dwell-based commit); validated via `--sim` without the
-      camera, ready to swap in the live C920 once mounted
+      `source:"aruco"` (dwell-based commit); validated live on the C920
+- [x] Auto-managed camera: the server launches/stops the tracker per tangible
+      trial (browser-only operation), shows a live camera dot from a tracker
+      heartbeat, and guards ops by source so they can't land in the wrong
+      condition's log
 - [x] Counterbalanced multi-clip session runner (protocol): training block
       before each condition, order + clip-set counterbalanced across 4 groups,
       per-participant results file; GUI trials interactive, tangible trials a
@@ -63,6 +66,13 @@ logs/              per-trial .jsonl + _summary.json  (the dataset)
       end-to-end (download labels → pick 3-speaker windows → fetch a few audio
       files → `import_kaggle.py` cuts + converts to the stimulus contract).
       Real clips are gitignored (licensed); synthetic clips remain the default.
+- [x] Synthetic Bengali conversation clips (`make_bengali_tts.py`): neutral
+      scripted 3-speaker dialogues rendered with Edge neural TTS (3 distinct
+      voices), same turn/error contract as `make_stimulus.py` but domain-matched
+      (Bengali) and matched difficulty across sets. Used for training + the
+      primary measured comparison; 1 real clip per set is kept as an
+      ecological-validity check (see `stimuli/protocol.json`). Generate with
+      `python make_bengali_tts.py --clip clipBnA --seed 11` (needs network once).
 
 ## Getting the real dataset (Bengali-Loop / DL Sprint 4.0)
 
@@ -96,20 +106,47 @@ full ~15 GB — the study needs only a couple of 3-speaker recordings.
    Zero-local-download alternative: paste `app\kaggle_make_stimuli.py` into a
    Kaggle notebook cell and download the small output zip.
 
-## Run a full participant session (protocol)
+## Run a full participant session (browser only)
+
+Start the server once, then **everything happens in the browser** — the
+operator never touches a second terminal:
+
+```bash
+..\.venv\Scripts\python.exe app\server.py
+```
 
 Open <http://localhost:8000>, enter a participant id (optionally a group
 0-3, else auto from the id), press **Begin session**, and work through the
-trials; **Finish trial** advances. For a tangible trial, run the tracker
-alongside so it drives that trial:
+trials; **Done — next** advances. The screen states the condition each trial
+(mouse vs. tokens) and shows step-by-step instructions.
 
-```bash
-..\.venv\Scripts\python.exe rig\tangible_input.py --duration 60          # live
-..\.venv\Scripts\python.exe rig\tangible_input.py --sim rig\demo_sim.json # dry-run
-```
+For a **tangible** trial the server **launches the camera tracker itself**
+with the right clip duration and stops it when the trial ends. A live dot on
+the trial screen shows the camera state:
+
+- `◍ Starting camera…` — the C920 takes a few seconds to open (normal).
+- `● Camera on — N tokens visible` — tracking; move the tokens.
+- `⚠ Point the camera at the whole sheet` — fewer than 4 corner markers seen.
+
+The camera is index 1 by default; override with `CAMERA_INDEX` (e.g.
+`$env:CAMERA_INDEX=0` before starting the server). Tracker stdout goes to
+`logs/tracker.log`.
+
+The server also **guards input by source**: a tangible (`aruco`) op is
+rejected during a GUI trial and a mouse op during a tangible trial (409), so
+ops can never land in the wrong condition's log.
 
 At the end a per-participant results file is written to `logs/` and the
 measured-vs-training split is respected by `analyze.py`.
+
+### Manual tracker (debugging only)
+
+The auto-managed path above is the norm. To drive the tracker by hand — e.g.
+a scripted dry-run without the camera — start a tangible trial, then:
+
+```bash
+..\.venv\Scripts\python.exe rig\tangible_input.py --sim rig\demo_sim.json --duration 60
+```
 
 Counterbalancing (group = order bit + clip-set bit):
 
@@ -118,15 +155,15 @@ group 0: gui{A,B} then tangible{C,D}      group 2: gui{C,D} then tangible{A,B}
 group 1: tangible{C,D} then gui{A,B}      group 3: tangible{A,B} then gui{C,D}
 ```
 
-## Tangible condition (from `rig/`)
+## Standalone tangible trial (outside the protocol)
+
+Usually you just run the protocol (above) and tangible trials manage their own
+camera. To exercise a single tangible trial directly, POST a session with
+`condition:"tangible"` — the server auto-starts the tracker for it, exactly as
+in the protocol:
 
 ```bash
-# 1. start a tangible session
 curl -X POST http://localhost:8000/api/session/start \
      -d '{"participant":"p01","condition":"tangible","clip":"clipA"}'
-# 2a. live camera (needs the mounted C920):
-..\.venv\Scripts\python.exe rig\tangible_input.py --duration 60
-# 2b. or a scripted dry-run without hardware:
-..\.venv\Scripts\python.exe rig\tangible_input.py --sim rig\demo_sim.json --duration 60
-# 3. finish & score, then analyze as above.
+# camera starts automatically; correct with the tokens, then finish & score.
 ```

@@ -1,6 +1,6 @@
 // Protocol-aware study frontend. Walks the counterbalanced trial list;
 // GUI trials are interactive, tangible trials are a read-only display that
-// polls state while the ArUco tracker drives the same operations.
+// polls state while the server-managed ArUco tracker drives the same ops.
 import WaveSurfer from "/static/vendor/wavesurfer.esm.js";
 import RegionsPlugin from "/static/vendor/regions.esm.js";
 
@@ -13,11 +13,35 @@ const SIL = "SIL";  // non-speech: neutral, not a reassignable speaker
 const colorFor = (spk) => (spk === SIL ? "rgba(120,120,120,0.13)" : rgba(COLORS[spk], 0.28));
 const labelFor = (spk) => (spk === SIL ? "" : spk);
 
+// per-condition copy, so a student always knows exactly what to do
+const COND = {
+  gui: {
+    icon: "🖱️", title: "Mouse",
+    sub: "Correct the labels with the mouse. The tokens are not used.",
+    steps: [
+      "<b>Click</b> a coloured block to change who is speaking.",
+      "<b>Drag the edge</b> between two blocks to move where one speaker stops and the next begins.",
+      "Press <b>Space</b> (or ▶ Play) to listen back.",
+    ],
+  },
+  tangible: {
+    icon: "✋", title: "Physical tokens",
+    sub: "Correct the labels with the tokens on the printed sheet. Please don’t use the mouse.",
+    steps: [
+      "<b>Place a speaker token</b> (S1 / S2 / S3) on a block to set who is speaking.",
+      "<b>Put the boundary handle</b> on a line and slide it to move a boundary.",
+      "<b>Rest the playback token</b> on PLAY, PAUSE or STOP — or on the SEEK strip to jump to a time.",
+      "<b>Hold each token still</b> for a moment so the camera registers it.",
+    ],
+  },
+};
+
 let ws, regions, segments = [], speakers = [], clip = "";
 let mode = "gui", running = false, t0 = 0, timerId = null, pollId = null, lastVersion = 0;
-let seeking = false, lastPv = -1;
+let seeking = false, lastPv = -1, isLast = false;
 const byId = new Map();
 const $ = (id) => document.getElementById(id);
+const show = (id, on) => ($(id).hidden = !on);
 const setStatus = (m) => ($("status").textContent = m);
 const fmt = (s) => `${(s / 60) | 0}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -125,7 +149,7 @@ function pb(event, media_t) {
   if (!running || mode !== "gui") return;
   fetch("/api/playback", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ event, media_t, source: mode === "gui" ? "mouse" : "aruco" }),
+    body: JSON.stringify({ event, media_t, source: "mouse" }),
   }).catch(() => {});
 }
 
@@ -135,9 +159,27 @@ function tick() {
     String((s / 60) | 0).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
 }
 
-async function poll() {              // tangible: reflect tracker edits + playback
+// tangible: reflect tracker edits + playback, and show the live camera dot
+function trackPill(tk) {
+  const el = $("trackpill");
+  if (mode !== "tangible" || !tk) { el.hidden = true; return; }
+  el.hidden = false;
+  const map = {
+    tracking:  ["ok",       `● Camera on — ${tk.tokens} token${tk.tokens === 1 ? "" : "s"} visible`],
+    no_sheet:  ["bad",      "⚠ Point the camera at the whole sheet"],
+    starting:  ["starting", "◍ Starting camera…"],
+    off:       ["starting", "◍ Starting camera…"],
+    error:     ["bad",      "⚠ Camera problem — ask the researcher"],
+  };
+  const [cls, txt] = map[tk.state] || map.starting;
+  el.className = "trackpill " + cls;
+  el.textContent = txt;
+}
+
+async function poll() {
   try {
     const st = await api("/api/state");
+    trackPill(st.tracker);
     if (st.version !== lastVersion) { lastVersion = st.version; reconcile(st.segments); }
     const p = st.playback;
     if (p && p.pv !== lastPv) {
@@ -153,30 +195,46 @@ async function poll() {              // tangible: reflect tracker edits + playba
 
 function showTrial(cur) {
   if (cur.done) return showResults(cur);
-  $("setup").hidden = true; $("trialbar").hidden = false;
+  show("setup", false); show("results", false); show("trial", true);
   mode = cur.condition; clip = cur.clip;
   segments = cur.segments; speakers = cur.speakers; lastVersion = 0;
-  $("progress").innerHTML =
-    `Trial ${cur.trial_index + 1}/${cur.total} · <b>${cur.phase.toUpperCase()}</b> · `
-    + `<span class="cond ${mode}">${mode.toUpperCase()}</span> · ${cur.clip}`;
-  $("tnote").hidden = mode !== "tangible";
-  $("ghelp").hidden = mode !== "gui";
-  $("summary").hidden = true;
+  isLast = cur.trial_index + 1 >= cur.total;
+
+  // header: progress + which trial + practice/measured
+  $("progressbar").style.width = `${((cur.trial_index + 1) / cur.total) * 100}%`;
+  $("trialcount").textContent = `Trial ${cur.trial_index + 1} of ${cur.total}`;
+  const badge = $("phasebadge");
+  badge.textContent = cur.phase;
+  badge.className = "badge" + (cur.phase === "training" ? " practice" : "");
+  badge.textContent = cur.phase === "training" ? "practice" : "recorded";
+
+  // condition banner + steps
+  const c = COND[mode];
+  $("condbanner").className = "condbanner " + mode;
+  $("condicon").textContent = c.icon;
+  $("condtitle").textContent = c.title;
+  $("condsub").textContent = c.sub;
+  $("steps").innerHTML = c.steps.map((s) => `<li>${s}</li>`).join("");
+  trackPill(null);
+
   legend(); initWave();
   running = true; t0 = Date.now();
+  $("timer").textContent = "00:00";
   clearInterval(timerId); timerId = setInterval(tick, 200);
   clearInterval(pollId);
   lastPv = -1;
   $("play").disabled = mode !== "gui";        // tangible: playback via tokens only
   $("seek").disabled = mode !== "gui";
-  if (mode === "tangible") pollId = setInterval(poll, 300);
-  setStatus(mode === "gui" ? "correct with mouse" : "use the physical tokens");
+  $("finish").textContent = isLast ? "Finish session ✓" : "Done — next →";
+  if (mode === "tangible") { poll(); pollId = setInterval(poll, 300); }
+  setStatus(mode === "gui"
+    ? "When it looks fixed, press Done."
+    : "The camera does the tracking — just move the tokens.");
 }
 
 function showResults(res) {
   running = false; clearInterval(timerId); clearInterval(pollId);
-  $("trialbar").hidden = true; $("tnote").hidden = true; $("ghelp").hidden = true;
-  $("setup").hidden = false;
+  show("trial", false); show("setup", false); show("results", true);
   const meas = res.results.filter((r) => r.phase === "measured");
   const by = {};
   meas.forEach((r) => {
@@ -186,32 +244,42 @@ function showResults(res) {
     by[k].bn += r.boundary.n; by[k].bc += r.boundary.corrected;
     by[k].t += r.total_time_s || 0;
   });
-  let out = `Session complete — group ${res.group}\n\nMeasured trials by condition:\n`;
+  let rows = "";
   for (const [c, v] of Object.entries(by))
-    out += `  ${c.padEnd(9)} confusion ${v.cc}/${v.cn}  boundary ${v.bc}/${v.bn}`
-      + `  time ${v.t.toFixed(1)}s\n`;
-  out += `\nFull per-trial results saved to logs/${res.results.length ? "" : ""}...`;
-  $("summary").hidden = false; $("summary").textContent = out;
-  setStatus("session complete");
+    rows += `<tr><td class="cond">${c}</td>`
+      + `<td>${v.cc}/${v.cn}</td><td>${v.bc}/${v.bn}</td>`
+      + `<td>${v.t.toFixed(1)} s</td></tr>`;
+  $("resultsbody").innerHTML = meas.length
+    ? `<p class="lead">Group ${res.group}. Corrections you made in the recorded trials:</p>
+       <table class="rtable"><thead><tr><th>Condition</th><th>Speaker fixes</th>
+       <th>Boundary fixes</th><th>Total time</th></tr></thead><tbody>${rows}</tbody></table>`
+    : `<p class="lead">Group ${res.group}. Session recorded.</p>`;
 }
 
 async function begin() {
+  const err = $("setuperr");
+  err.hidden = true;
+  const pid = $("pid").value.trim();
+  if (!pid) { err.textContent = "Please enter a participant ID."; err.hidden = false; return; }
   try {
     const g = $("group").value;
     const cur = await api("/api/protocol/start",
-      { participant: $("pid").value, ...(g !== "" ? { group: Number(g) } : {}) });
+      { participant: pid, ...(g !== "" ? { group: Number(g) } : {}) });
     showTrial(cur);
-  } catch (e) { alert("begin error: " + e.message); }
+  } catch (e) { err.textContent = "Could not start: " + e.message; err.hidden = false; }
 }
 
 async function finishTrial() {
   running = false; clearInterval(timerId); clearInterval(pollId);
+  $("finish").disabled = true;
   try { showTrial(await api("/api/protocol/next", {})); }
   catch (e) { setStatus("finish error: " + e.message); }
+  finally { $("finish").disabled = false; }
 }
 
 $("begin").onclick = begin;
 $("finish").onclick = finishTrial;
+$("restart").onclick = () => { show("results", false); show("setup", true); };
 $("play").onclick = () => ws && ws.playPause();
 $("seek").oninput = () => {
   const d = (ws && ws.getDuration()) || 0;
