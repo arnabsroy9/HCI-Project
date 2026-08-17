@@ -32,8 +32,15 @@ PLAYBACK_ID = 30
 
 
 # ---------- geometry / mapping ----------
-def time_of(x_mm, mm_per_s):
-    return (x_mm - X0_MM) / mm_per_s
+def band_time(x_mm, y_mm, bands):
+    """Map a token at (x_mm, y_mm) to GLOBAL clip time using the folded-band
+    geometry: the row (y) picks the band, x picks the time within it. Returns
+    None if the token isn't inside any band row."""
+    for b in bands:
+        if b["y0"] <= y_mm <= b["y1"]:
+            t = b["t0"] + (x_mm - b["x0"]) / b["mm_per_s"]
+            return max(b["t0"], min(b["t1"], t))     # clamp to the band's span
+    return None
 
 
 def segment_at(segments, t):
@@ -52,9 +59,10 @@ def nearest_boundary(segments, t):
     return bd
 
 
-def token_to_op(mid, x_mm, mm_per_s, segments, speakers):
-    """Map a settled token to an operation dict, or None."""
-    t = time_of(x_mm, mm_per_s)
+def token_to_op(mid, t, segments, speakers):
+    """Map a settled token at GLOBAL time t to an operation dict, or None."""
+    if t is None:
+        return None
     if mid >= BOUNDARY_ID0:                      # boundary handle
         b = nearest_boundary(segments, t)
         if b is None:
@@ -68,6 +76,23 @@ def token_to_op(mid, x_mm, mm_per_s, segments, speakers):
     if seg is None or seg["speaker"] == spk:
         return None                               # nothing to change
     return {"op": "reassign", "segment": seg["id"], "speaker": spk}
+
+
+def hover_target(mid, t, segments, speakers, prog):
+    """Live PRE-commit target for the on-screen cue, or None. Says what this
+    token is currently pointing at (segment / boundary) and its dwell progress."""
+    if t is None:
+        return None
+    if mid >= BOUNDARY_ID0:
+        return {"id": mid, "kind": "boundary", "time": round(t, 3),
+                "boundary": nearest_boundary(segments, t), "progress": prog}
+    idx = mid - SPEAKER_ID0
+    if not (0 <= idx < len(speakers)):
+        return None
+    seg = segment_at(segments, t)
+    return {"id": mid, "kind": "speaker", "time": round(t, 3),
+            "speaker": speakers[idx], "segment": seg["id"] if seg else None,
+            "progress": prog}
 
 
 # ---------- dwell-based commit ----------
@@ -103,6 +128,14 @@ class Committer:
             self.ref[mid] = (x, y, now)      # reset so it will not refire
             return True
         return False
+
+    def progress(self, mid, now):
+        """Fraction (0..1) of the dwell a stationary, armed token has held --
+        drives the on-screen 'committing...' ring."""
+        ref = self.ref.get(mid)
+        if not ref or not self.armed.get(mid, True):
+            return 0.0
+        return max(0.0, min(1.0, (now - ref[2]) / self.dwell))
 
     def absent(self, mid):
         self.ref.pop(mid, None)
@@ -167,7 +200,7 @@ def send_op(server, op):
 
 
 # ---------- run modes ----------
-def run_sim(server, holds, mm_per_s, still, dwell, rearm, pbc=None):
+def run_sim(server, holds, bands, still, dwell, rearm, pbc=None):
     """Play scripted token holds: [{id, x_mm, y_mm, hold_s}, ...]."""
     st = api(server, "/api/state")
     segments, speakers = st["segments"], st["speakers"]
@@ -175,6 +208,7 @@ def run_sim(server, holds, mm_per_s, still, dwell, rearm, pbc=None):
     emitted = []
     for hold in holds:
         mid = hold["id"]
+        y = hold.get("y_mm", bands[0]["y0"])
         steps = max(2, int(hold["hold_s"] * 10))
         for _ in range(steps):
             now = time.time()
@@ -184,8 +218,9 @@ def run_sim(server, holds, mm_per_s, still, dwell, rearm, pbc=None):
                     api(server, "/api/playback", {**cmd, "source": "aruco"})
                     emitted.append(cmd)
                     print("  playback ->", cmd)
-            elif com.update(mid, hold["x_mm"], hold.get("y_mm", 90.0), now):
-                op = token_to_op(mid, hold["x_mm"], mm_per_s, segments, speakers)
+            elif com.update(mid, hold["x_mm"], y, now):
+                t = band_time(hold["x_mm"], y, bands)
+                op = token_to_op(mid, t, segments, speakers)
                 if op:
                     segments = send_op(server, op) or segments
                     emitted.append(op)
@@ -196,7 +231,7 @@ def run_sim(server, holds, mm_per_s, still, dwell, rearm, pbc=None):
     return emitted
 
 
-def run_camera(server, index, mm_per_s, still, dwell, rearm, pbc=None):
+def run_camera(server, index, bands, still, dwell, rearm, pbc=None):
     import cv2
     import live_detect as L
     det = cv2.aruco.ArucoDetector(
@@ -207,7 +242,7 @@ def run_camera(server, index, mm_per_s, still, dwell, rearm, pbc=None):
     st = api(server, "/api/state")
     segments, speakers = st["segments"], st["speakers"]
     print("tracking... Ctrl+C to stop")
-    last_hb = 0.0
+    last_hb = last_hover = 0.0
     try:
         while True:
             ok, frame = cap.read()
@@ -216,7 +251,7 @@ def run_camera(server, index, mm_per_s, still, dwell, rearm, pbc=None):
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             corners, ids, _ = det.detectMarkers(gray)
             cen = L.centers(corners, ids)
-            _, toks, have = L.analyze(cen, mm_per_s)
+            _, toks, have = L.analyze(cen, 1.0)  # per-token t ignored; band maps it
             now = time.time()
             if now - last_hb > 0.4:              # heartbeat -> browser camera dot
                 last_hb = now
@@ -225,19 +260,31 @@ def run_camera(server, index, mm_per_s, still, dwell, rearm, pbc=None):
                         {"corners": len(have), "tokens": len(toks)})
                 except Exception:
                     pass
-            seen = set()
-            for mid, t, lane, x_mm, y_mm in toks:
+            seen, targets = set(), []
+            for mid, _t, _lane, x_mm, y_mm in toks:
                 seen.add(mid)
                 if pbc is not None and mid == PLAYBACK_ID:
                     cmd = pbc.update(x_mm, y_mm)
                     if cmd:
                         api(server, "/api/playback", {**cmd, "source": "aruco"})
                         print("  playback ->", cmd)
-                elif com.update(mid, x_mm, y_mm, now):
-                    op = token_to_op(mid, x_mm, mm_per_s, segments, speakers)
+                    continue
+                t = band_time(x_mm, y_mm, bands)
+                if com.update(mid, x_mm, y_mm, now):
+                    op = token_to_op(mid, t, segments, speakers)
                     if op:
                         segments = send_op(server, op) or segments
                         print("  commit id%-3d -> %s" % (mid, op))
+                tg = hover_target(mid, t, segments, speakers,
+                                  round(com.progress(mid, now), 2))
+                if tg:
+                    targets.append(tg)
+            if now - last_hover > 0.12:          # live target cue -> display
+                last_hover = now
+                try:
+                    api(server, "/api/hover", {"targets": targets})
+                except Exception:
+                    pass
             for mid in list(com.ref):
                 if mid not in seen:
                     com.absent(mid)
@@ -255,17 +302,21 @@ def main():
     ap.add_argument("--dwell-ms", type=float, default=600.0)
     ap.add_argument("--rearm-mm", type=float, default=8.0)
     args = ap.parse_args()
-    mm_per_s = (400.0 - X0_MM) / args.duration
 
     zones = load_zones()
     pbc = PlaybackController(zones) if zones else None
+    # Folded-band geometry from generate_sheets; fall back to one full-width
+    # 60 s band (old single-timeline sheet) if the JSON predates bands.
+    bands = (zones or {}).get("bands") or [{
+        "index": 0, "t0": 0.0, "t1": args.duration, "x0": X0_MM, "x1": 400.0,
+        "mm_per_s": (400.0 - X0_MM) / args.duration, "y0": 0.0, "y1": 300.0}]
 
     if args.sim:
         holds = json.load(open(args.sim))
-        run_sim(args.server, holds, mm_per_s, args.still_mm, args.dwell_ms,
+        run_sim(args.server, holds, bands, args.still_mm, args.dwell_ms,
                 args.rearm_mm, pbc)
     else:
-        run_camera(args.server, args.index, mm_per_s,
+        run_camera(args.server, args.index, bands,
                    args.still_mm, args.dwell_ms, args.rearm_mm, pbc)
 
 

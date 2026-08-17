@@ -5,10 +5,12 @@
 #
 #  Produces two vector PDFs at EXACT millimetre scale:
 #    timeline_a3.pdf : A3-landscape generic timeline sheet with
-#                      4 corner ArUco fiducials (homography ref),
-#                      a linear time axis, and N speaker lanes.
-#                      Generic across clips -- segments live on
-#                      screen, NOT on the paper.
+#                      4 corner ArUco fiducials (homography ref) and
+#                      the clip's timeline FOLDED across N band rows
+#                      (e.g. 3 x 20 s) for finer placement resolution.
+#                      A token's row picks the band, its x picks the
+#                      time within it. Generic across clips -- segments
+#                      live on screen, NOT on the paper.
 #    tokens.pdf      : one ArUco speaker token per speaker, on A4,
 #                      with quiet zones and cut guides.
 #
@@ -69,7 +71,7 @@ def draw_marker(c, cx, cy_top, size, marker_id, page_h):
                        cell * mm, cell * mm, stroke=0, fill=1)
 
 # ---------- timeline sheet ----------
-def build_timeline(path, duration_s, n_speakers):
+def build_timeline(path, duration_s, n_bands):
     PW, PH = 420.0, 297.0                      # A3 landscape, mm
     c = canvas.Canvas(path, pagesize=landscape(A3))
 
@@ -82,41 +84,57 @@ def build_timeline(path, duration_s, n_speakers):
     for mid, (cx, cy) in zip(CORNER_IDS, centers):
         draw_marker(c, cx, cy, m, mid, PH)
 
-    # --- time axis ---
-    x0, x1 = 40.0, 400.0                        # t=0 .. t=duration
-    y_axis = 48.0
-    mmps = (x1 - x0) / duration_s               # mm per second
-    c.setStrokeColorRGB(0, 0, 0); c.setLineWidth(1.8)
-    c.line(X(x0), Y(y_axis), X(x1), Y(y_axis))
-
-    lane_top, lane_bot = 56.0, 206.0
-    gap = 5.0
-    lane_h = ((lane_bot - lane_top) - gap * (n_speakers - 1)) / n_speakers
-
-    # major (5s) + minor (1s) ticks, gridlines, labels
-    c.setFont("Helvetica-Bold", 9)
-    s = 0
-    while s <= duration_s + 1e-6:
-        x = x0 + s * mmps
-        major = (s % 5 == 0)
-        c.setStrokeColorRGB(0, 0, 0); c.setLineWidth(1.5 if major else 0.8)
-        tick = 3.5 if major else 1.8
-        c.line(X(x), Y(y_axis), X(x), Y(y_axis - tick))
-        if major:
-            c.setFillColorRGB(0, 0, 0)
-            c.drawCentredString(X(x), Y(y_axis - 7), f"{s}s")
-            c.setStrokeColorRGB(0.7, 0.7, 0.7); c.setLineWidth(0.6)   # gridline
-            c.line(X(x), Y(lane_top), X(x), Y(lane_bot))
-        s += 1
-
-    # --- speaker lanes ---
-    for i in range(n_speakers):
-        top = lane_top + i * (lane_h + gap)
+    # --- N time-band rows ---
+    # The single 60 s timeline is FOLDED across n_bands rows for finer
+    # resolution (e.g. 3 rows of 20 s => 3x the mm/second of one 60 s axis).
+    # A token's ROW selects the band, its x selects the time within that band;
+    # global time = band.t0 + (x - x0)/band.mm_per_s. Speakers are still carried
+    # by the tokens (id + colour), NOT by the rows.
+    x0, x1 = 40.0, 400.0
+    band_top, band_bot = 58.0, 206.0
+    bgap = 9.0
+    band_h = ((band_bot - band_top) - bgap * (n_bands - 1)) / n_bands
+    bs = duration_s / n_bands                   # seconds per band
+    mmps_band = (x1 - x0) / bs                   # mm per second within a band
+    mmps = (x1 - x0) / duration_s               # global mm/s (for the seek strip)
+    bands = []
+    for i in range(n_bands):
+        top = band_top + i * (band_h + bgap)
+        axis_y = top + band_h * 0.62
+        t0, t1 = i * bs, (i + 1) * bs
+        # faint 5 s gridlines down the band
+        c.setStrokeColorRGB(0.72, 0.72, 0.72); c.setLineWidth(0.6)
+        s = 0
+        while s <= bs + 1e-6:
+            if s % 5 == 0:
+                x = x0 + s * mmps_band
+                c.line(X(x), Y(top), X(x), Y(top + band_h))
+            s += 1
+        # placement rectangle
         c.setStrokeColorRGB(0.2, 0.2, 0.2); c.setLineWidth(1.4)
-        c.rect(X(x0), Y(top + lane_h), (x1 - x0) * mm, lane_h * mm,
-               stroke=1, fill=0)
-        c.setFillColorRGB(0, 0, 0); c.setFont("Helvetica-Bold", 14)
-        c.drawCentredString(X(x0 / 2 + 4), Y(top + lane_h / 2 + 2), f"S{i+1}")
+        c.rect(X(x0), Y(top + band_h), (x1 - x0) * mm, band_h * mm, stroke=1, fill=0)
+        # band time axis + ticks (labelled with GLOBAL seconds)
+        c.setStrokeColorRGB(0, 0, 0); c.setLineWidth(1.6)
+        c.line(X(x0), Y(axis_y), X(x1), Y(axis_y))
+        c.setFont("Helvetica-Bold", 8)
+        s = 0
+        while s <= bs + 1e-6:
+            x = x0 + s * mmps_band
+            major = (s % 5 == 0)
+            c.setStrokeColorRGB(0, 0, 0); c.setLineWidth(1.4 if major else 0.7)
+            tick = 3.5 if major else 1.8
+            c.line(X(x), Y(axis_y), X(x), Y(axis_y - tick))
+            if major:
+                c.setFillColorRGB(0, 0, 0)
+                c.drawCentredString(X(x), Y(axis_y - 7), f"{int(t0 + s)}s")
+            s += 1
+        # left label: the band's global time range
+        c.setFillColorRGB(0, 0, 0); c.setFont("Helvetica-Bold", 12)
+        c.drawCentredString(X(x0 / 2 + 4), Y(top + band_h / 2 - 2),
+                            f"{int(t0)}-{int(t1)}s")
+        bands.append({"index": i, "t0": t0, "t1": t1, "x0": x0, "x1": x1,
+                      "mm_per_s": round(mmps_band, 4),
+                      "y0": round(top, 1), "y1": round(top + band_h, 1)})
 
     # --- seek strip (2nd timeline: place the playback token here to jump) ---
     seek_y0, seek_y1 = 214.0, 230.0
@@ -172,7 +190,7 @@ def build_timeline(path, duration_s, n_speakers):
     transport = {"seek": {"x0": x0, "x1": x1, "y0": seek_y0, "y1": seek_y1},
                  **{k: {"x0": v[0], "x1": v[1], "y0": v[2], "y1": v[3]}
                     for k, v in boxes.items()}}
-    return dict(x0=x0, x1=x1, mmps=mmps, corner_centers=centers,
+    return dict(x0=x0, x1=x1, mmps=mmps, bands=bands, corner_centers=centers,
                 corner_ids=CORNER_IDS, marker_mm=m, transport=transport)
 
 # ---------- token sheet ----------
@@ -228,6 +246,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--duration", type=float, default=60.0)
     ap.add_argument("--speakers", type=int, default=3)
+    ap.add_argument("--bands", type=int, default=3,
+                    help="fold the timeline across this many rows (resolution)")
     ap.add_argument("--handles", type=int, default=1,
                     help="boundary-handle tokens (ids 20+)")
     ap.add_argument("--outdir", default=".")
@@ -239,22 +259,29 @@ def main():
     tk = os.path.join(args.outdir, "tokens.pdf")
     zf = os.path.join(args.outdir, "transport_zones.json")
 
-    meta = build_timeline(tl, args.duration, args.speakers)
+    meta = build_timeline(tl, args.duration, args.bands)
     build_tokens(tk, args.speakers, args.handles)
     json.dump({"x0_mm": meta["x0"], "mm_per_second": meta["mmps"],
-               "duration_s": args.duration, "zones": meta["transport"]},
+               "duration_s": args.duration, "bands": meta["bands"],
+               "zones": meta["transport"]},
               open(zf, "w"), indent=2)
 
     print("Wrote:")
     print("  " + tl)
     print("  " + tk)
     print("  " + zf)
-    print("\nMapping constants (feed these to the tracker):")
+    print("\nMapping (the tracker reads bands from transport_zones.json):")
     print(f"  x0_mm         = {meta['x0']}")
-    print(f"  mm_per_second = {meta['mmps']:.4f}")
-    print(f"  clip_seconds  = {args.duration}")
+    print(f"  seek mm/s     = {meta['mmps']:.4f}   (60 s seek strip)")
+    print(f"  bands         = {len(meta['bands'])} x "
+          f"{args.duration / len(meta['bands']):.0f}s  "
+          f"@ {meta['bands'][0]['mm_per_s']:.2f} mm/s "
+          f"({meta['mmps']:.2f} -> {meta['bands'][0]['mm_per_s']:.2f}, "
+          f"{meta['bands'][0]['mm_per_s'] / meta['mmps']:.1f}x resolution)")
+    for b in meta["bands"]:
+        print(f"    band {b['index']}: t {b['t0']:.0f}-{b['t1']:.0f}s  "
+              f"y {b['y0']}-{b['y1']} mm")
     print(f"  corner ids    = {meta['corner_ids']} (TL,TR,BR,BL)")
-    print(f"  corner centers (mm, top-left) = {meta['corner_centers']}")
 
 if __name__ == "__main__":
     main()

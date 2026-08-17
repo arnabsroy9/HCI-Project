@@ -100,15 +100,36 @@ def annotate(frame, corners, ids, toks):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
     return frame
 
+def _load_bands():
+    import json
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "transport_zones.json")
+    if not os.path.exists(p):
+        return []
+    return json.load(open(p)).get("bands", [])
+
+
+def band_time(x_mm, y_mm, bands):
+    """Folded-band map: row (y) -> band, x -> time within it -> global time."""
+    for b in bands:
+        if b["y0"] <= y_mm <= b["y1"]:
+            t = b["t0"] + (x_mm - b["x0"]) / b["mm_per_s"]
+            return b["index"], max(b["t0"], min(b["t1"], t))
+    return None, None
+
+
 def summarize(cen, toks, have):
-    kind = {**{i: "corner" for i in CORNER_MM}}
+    bands = _load_bands()
     print(f"  corners seen: {sorted(have)}  ({len(have)}/4)")
     if len(have) < 4:
         print("  -> need all 4 corners for the homography; "
               "reposition so the whole sheet is in frame.")
-    for mid, t, lane, x_mm, y_mm in toks:
+    for mid, _t, _lane, x_mm, y_mm in toks:
         role = "handle" if mid >= 20 else f"S{mid-10+1}"
-        print(f"  token id{mid:<3} ({role:>6}): t={t:6.2f}s  lane={lane}  "
+        band, gt = band_time(x_mm, y_mm, bands)
+        where = (f"band {band}  t={gt:6.2f}s" if band is not None
+                 else "(not in any band row)")
+        print(f"  token id{mid:<3} ({role:>6}): {where}  "
               f"[sheet {x_mm:6.1f},{y_mm:6.1f} mm]")
     all_tok = [k for k in cen if k not in CORNER_MM]
     if not all_tok:

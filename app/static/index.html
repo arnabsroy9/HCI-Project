@@ -67,7 +67,11 @@
     <ol id="steps" class="steps"></ol>
 
     <div id="legend" class="legend"></div>
-    <div id="wave"></div>
+    <div class="wavewrap">
+      <div id="wave"></div>
+      <div id="overlay" aria-hidden="true"></div>
+    </div>
+    <div id="ruler" class="ruler" aria-hidden="true"></div>
     <div id="transport">
       <button id="play" type="button">▶ Play</button>
       <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="seek">

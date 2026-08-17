@@ -66,6 +66,14 @@ RIG = os.path.join(os.path.dirname(BASE), "rig")
 PORT = int(os.environ.get("PORT", "8000"))
 CAMERA_INDEX = int(os.environ.get("CAMERA_INDEX", "1"))
 TRACKER = {"proc": None, "error": None, "hb": None, "hb_epoch": 0.0}
+# Live pre-commit token targets streamed by the tracker (tangible hover cue).
+# The GUI computes its own hover client-side; this is only the tangible feed.
+HOVER = {"targets": [], "epoch": 0.0}
+
+
+def hover_targets():
+    """Fresh live targets (<1 s old), else empty so a stale cue doesn't linger."""
+    return HOVER["targets"] if (time.time() - HOVER["epoch"]) < 1.0 else []
 
 
 def start_tracker(duration):
@@ -156,6 +164,7 @@ def start_session(participant, condition, clip, phase="single", trial_index=None
     log_event({"event": "session_start", "participant": participant,
                "condition": condition, "clip": clip, "phase": phase,
                "trial_index": trial_index})
+    HOVER["targets"] = []                        # drop any stale hover cue
     # Auto-manage the camera: a tangible trial launches the tracker itself;
     # any other trial makes sure no tracker is left running.
     if condition == "tangible":
@@ -169,7 +178,8 @@ def session_state():
     return {"version": STATE["version"], "clip": STATE["clip"],
             "duration": STATE["duration"], "speakers": STATE["speakers"],
             "segments": STATE["segments"], "session": STATE["session"],
-            "playback": STATE["playback"], "tracker": tracker_status()}
+            "playback": STATE["playback"], "tracker": tracker_status(),
+            "targets": hover_targets()}
 
 
 def playback_event(ev, media_t, source):
@@ -430,6 +440,11 @@ class Handler(BaseHTTPRequestHandler):
                     TRACKER["hb"] = {"corners": int(body.get("corners", 0)),
                                      "tokens": int(body.get("tokens", 0))}
                     TRACKER["hb_epoch"] = time.time()
+                return self._json(200, {"ok": True})
+            if u.path == "/api/hover":            # live pre-commit token targets
+                with LOCK:
+                    HOVER["targets"] = body.get("targets", [])
+                    HOVER["epoch"] = time.time()
                 return self._json(200, {"ok": True})
             if u.path == "/api/session/finish":
                 with LOCK:

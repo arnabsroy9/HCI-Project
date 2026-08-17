@@ -99,7 +99,38 @@ button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0 10px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; }
 .swatch { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+.wavewrap { position: relative; }
 #wave { border: 1px solid var(--line); border-radius: 10px; background: #fff; min-height: 120px; }
+
+/* live "what am I pointing at" cue overlay (matched in GUI + tangible) */
+#overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: 10px; }
+.ov-hl { position: absolute; top: 0; bottom: 0; box-sizing: border-box;
+  background: rgba(37, 99, 235, .10); border: 1.5px solid var(--primary); border-radius: 4px; }
+.ov-hl.tinted { background: color-mix(in srgb, var(--tint) 20%, transparent); border-color: var(--tint); }
+.ov-cursor { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--primary); transform: translateX(-1px); }
+.ov-cursor.off { background: var(--muted); opacity: .55; }
+.ov-edge { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--warn); transform: translateX(-1.5px); }
+.ov-ghost { position: absolute; top: 0; bottom: 0; border-left: 2px dashed var(--warn); }
+.ov-time { position: absolute; top: -3px; transform: translateX(-50%); background: var(--ink);
+  color: #fff; font-size: .7rem; padding: 1px 5px; border-radius: 4px;
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ov-ring { position: absolute; top: 6px; width: 20px; height: 20px; transform: translateX(-50%); border-radius: 50%;
+  background: conic-gradient(var(--ok) calc(var(--p) * 360deg), rgba(0, 0, 0, .12) 0);
+  -webkit-mask: radial-gradient(circle, transparent 5px, #000 6px);
+  mask: radial-gradient(circle, transparent 5px, #000 6px); }
+
+/* commit flash: the changed segment pulses briefly (both conditions) */
+@keyframes flashpulse { 0% { filter: brightness(1.7); } 100% { filter: brightness(1); } }
+.ws-flash { animation: flashpulse .5s ease-out; }
+
+/* 0-60s time ruler under the waveform (fixed whole-clip scale, so % = t/dur) */
+.ruler { position: relative; height: 24px; margin: 4px 2px 0; }
+.ruler .tick { position: absolute; top: 0; width: 1px; height: 5px; background: var(--muted); }
+.ruler .tick.major { height: 9px; background: var(--ink); }
+.ruler .ticklabel { position: absolute; top: 10px; font-size: .7rem; color: var(--muted);
+  transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ruler .ticklabel.first { transform: translateX(0); }
+.ruler .ticklabel.last { transform: translateX(-100%); }
 #transport { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px; }
 #transport button { background: #eef2f7; color: var(--ink); padding: 9px 16px; font-weight: 600; }
 #transport button:disabled { opacity: .45; cursor: not-allowed; }

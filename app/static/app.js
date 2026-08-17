@@ -69,6 +69,80 @@ function legend() {
     `<span class="chip"><span class="swatch" style="background:rgba(120,120,120,0.35)"></span>silence</span>`;
 }
 
+// A 0-60s time ruler under the waveform. Fixed whole-clip scale (no zoom),
+// so a tick at time t sits at (t/duration)% across. Shared by both conditions.
+function buildRuler() {
+  const el = $("ruler");
+  el.innerHTML = "";
+  const d = (ws && ws.getDuration()) || 0;
+  if (!d) return;
+  const step = 5;                                   // tick every 5 s, label every 10 s
+  const last = Math.round(d);
+  for (let t = 0; t <= last; t += step) {
+    const pct = (t / d) * 100;
+    const major = t % 10 === 0;
+    const tick = document.createElement("div");
+    tick.className = "tick" + (major ? " major" : "");
+    tick.style.left = pct + "%";
+    el.appendChild(tick);
+    if (major) {
+      const lab = document.createElement("span");
+      lab.className = "ticklabel" + (t === 0 ? " first" : t + step > last ? " last" : "");
+      lab.style.left = pct + "%";
+      lab.textContent = fmt(t);
+      el.appendChild(lab);
+    }
+  }
+}
+
+// ---- live "what am I pointing at" cue overlay (matched GUI + tangible) ----
+const pct = (t) => { const d = (ws && ws.getDuration()) || 0; return d ? (t / d) * 100 : 0; };
+const segById = (id) => segments.find((s) => s.id === id);
+const segmentAt = (t) => segments.find((s) => s.start <= t && t < s.end);
+
+// cue: {t, seg:id|null, bnd:index|null, spk:name|null, progress:0..1|null}
+function renderCues(cues) {
+  const ov = $("overlay");
+  ov.innerHTML = "";
+  if (!((ws && ws.getDuration()) || 0)) return;
+  const add = (cls, left, extra) => {
+    const e = document.createElement("div");
+    e.className = cls; e.style.left = left + "%";
+    if (extra) extra(e); ov.appendChild(e); return e;
+  };
+  cues.forEach((c) => {
+    if (c.t == null) return;
+    const onTarget = c.seg != null || c.bnd != null;
+    if (c.seg != null) {                          // target-segment highlight
+      const s = segById(c.seg);
+      if (s) add("ov-hl" + (c.spk ? " tinted" : ""), pct(s.start), (e) => {
+        e.style.width = (pct(s.end) - pct(s.start)) + "%";
+        if (c.spk) e.style.setProperty("--tint", COLORS[c.spk] || "#888");
+      });
+    }
+    if (c.bnd != null) {                          // boundary edge + ghost target
+      const seg = segments[c.bnd];
+      if (seg) add("ov-edge", pct(seg.end));
+      add("ov-ghost", pct(c.t));
+    }
+    add("ov-cursor" + (onTarget ? "" : " off"), pct(c.t));
+    add("ov-time", pct(c.t), (e) => { e.textContent = onTarget ? fmt(c.t) : "no target"; });
+    if (c.progress != null && c.progress > 0.01)  // dwell ring (tangible)
+      add("ov-ring", pct(c.t), (e) => e.style.setProperty("--p", c.progress));
+  });
+}
+const clearCues = () => ($("overlay").innerHTML = "");
+
+function guiHover(ev) {                            // GUI: mouse is the pointer
+  if (!running || mode !== "gui") return;
+  const r = $("overlay").parentElement.getBoundingClientRect();
+  const d = (ws && ws.getDuration()) || 0;
+  if (!d) return;
+  const t = Math.max(0, Math.min(d, ((ev.clientX - r.left) / r.width) * d));
+  const s = segmentAt(t);
+  renderCues([{ t, seg: s ? s.id : null, bnd: null, spk: null, progress: null }]);
+}
+
 function buildRegions() {
   regions.clearRegions();
   byId.clear();
@@ -86,17 +160,25 @@ function buildRegions() {
   });
 }
 
+function flash(r) {                                // brief pulse on a changed segment
+  const el = r && r.element;
+  if (!el) return;
+  el.classList.remove("ws-flash"); void el.offsetWidth; el.classList.add("ws-flash");
+}
+
 function reconcile(newSegs) {
   segments = newSegs;
   segments.forEach((seg) => {
     const r = byId.get(seg.id);
     if (!r) return;
-    if (Math.abs(r.start - seg.start) > 1e-4 || Math.abs(r.end - seg.end) > 1e-4)
-      r.setOptions({ start: seg.start, end: seg.end });
-    if (r._spk !== seg.speaker) {
+    const moved = Math.abs(r.start - seg.start) > 1e-4 || Math.abs(r.end - seg.end) > 1e-4;
+    if (moved) r.setOptions({ start: seg.start, end: seg.end });
+    const recolored = r._spk !== seg.speaker;
+    if (recolored) {
       r._spk = seg.speaker;
       r.setOptions({ content: labelFor(seg.speaker), color: colorFor(seg.speaker) });
     }
+    if (moved || recolored) flash(r);
   });
 }
 
@@ -133,6 +215,7 @@ function initWave() {
   });
   regions = ws.registerPlugin(RegionsPlugin.create());
   ws.on("decode", buildRegions);
+  ws.on("decode", buildRuler);
   regions.on("region-clicked", (r, e) => { e.stopPropagation(); onReassign(r); });
   regions.on("region-updated", (r, side) => onBoundary(r, side));
   // transport
@@ -180,6 +263,9 @@ async function poll() {
   try {
     const st = await api("/api/state");
     trackPill(st.tracker);
+    renderCues((st.targets || []).map((g) => g.kind === "boundary"
+      ? { t: g.time, seg: null, bnd: g.boundary, spk: null, progress: g.progress }
+      : { t: g.time, seg: g.segment, spk: g.speaker, progress: g.progress }));
     if (st.version !== lastVersion) { lastVersion = st.version; reconcile(st.segments); }
     const p = st.playback;
     if (p && p.pv !== lastPv) {
@@ -217,7 +303,7 @@ function showTrial(cur) {
   $("steps").innerHTML = c.steps.map((s) => `<li>${s}</li>`).join("");
   trackPill(null);
 
-  legend(); initWave();
+  legend(); initWave(); clearCues();
   running = true; t0 = Date.now();
   $("timer").textContent = "00:00";
   clearInterval(timerId); timerId = setInterval(tick, 200);
@@ -226,14 +312,14 @@ function showTrial(cur) {
   $("play").disabled = mode !== "gui";        // tangible: playback via tokens only
   $("seek").disabled = mode !== "gui";
   $("finish").textContent = isLast ? "Finish session ✓" : "Done — next →";
-  if (mode === "tangible") { poll(); pollId = setInterval(poll, 300); }
+  if (mode === "tangible") { poll(); pollId = setInterval(poll, 150); }
   setStatus(mode === "gui"
     ? "When it looks fixed, press Done."
     : "The camera does the tracking — just move the tokens.");
 }
 
 function showResults(res) {
-  running = false; clearInterval(timerId); clearInterval(pollId);
+  running = false; clearInterval(timerId); clearInterval(pollId); clearCues();
   show("trial", false); show("setup", false); show("results", true);
   const meas = res.results.filter((r) => r.phase === "measured");
   const by = {};
@@ -276,6 +362,10 @@ async function finishTrial() {
   catch (e) { setStatus("finish error: " + e.message); }
   finally { $("finish").disabled = false; }
 }
+
+const wavewrap = document.querySelector(".wavewrap");
+wavewrap.addEventListener("pointermove", guiHover);
+wavewrap.addEventListener("pointerleave", () => { if (mode === "gui") clearCues(); });
 
 $("begin").onclick = begin;
 $("finish").onclick = finishTrial;
