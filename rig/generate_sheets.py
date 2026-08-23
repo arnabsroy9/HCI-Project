@@ -91,7 +91,7 @@ def build_timeline(path, duration_s, n_bands):
     # global time = band.t0 + (x - x0)/band.mm_per_s. Speakers are still carried
     # by the tokens (id + colour), NOT by the rows.
     x0, x1 = 40.0, 400.0
-    band_top, band_bot = 58.0, 206.0
+    band_top, band_bot = 58.0, 206.0             # matches the printed sheet's bands
     bgap = 9.0
     band_h = ((band_bot - band_top) - bgap * (n_bands - 1)) / n_bands
     bs = duration_s / n_bands                   # seconds per band
@@ -136,40 +136,12 @@ def build_timeline(path, duration_s, n_bands):
                       "mm_per_s": round(mmps_band, 4),
                       "y0": round(top, 1), "y1": round(top + band_h, 1)})
 
-    # --- seek strip (2nd timeline: place the playback token here to jump) ---
-    seek_y0, seek_y1 = 214.0, 230.0
-    seek_axis = (seek_y0 + seek_y1) / 2
-    c.setStrokeColorRGB(0.2, 0.2, 0.2); c.setLineWidth(1.4)
-    c.rect(X(x0), Y(seek_y1), (x1 - x0) * mm, (seek_y1 - seek_y0) * mm, stroke=1, fill=0)
-    c.setStrokeColorRGB(0, 0, 0); c.setLineWidth(1.6)
-    c.line(X(x0), Y(seek_axis), X(x1), Y(seek_axis))
-    s = 0
-    while s <= duration_s + 1e-6:
-        x = x0 + s * mmps
-        if s % 5 == 0:
-            c.setLineWidth(1.4); c.line(X(x), Y(seek_axis), X(x), Y(seek_axis - 3))
-            c.setFont("Helvetica", 7); c.drawCentredString(X(x), Y(seek_axis + 4.5), f"{s}s")
-        s += 1
-    c.setFillColorRGB(0, 0, 0); c.setFont("Helvetica-Bold", 11)
-    c.drawCentredString(X(x0 / 2 + 4), Y(seek_axis + 1), "SEEK")
-
-    # --- transport boxes (playback token: STOP -> PLAY -> PAUSE) ---
-    box_w, box_h, box_top, box_gap = 55.0, 26.0, 240.0, 12.0
-    total = 3 * box_w + 2 * box_gap
-    bx0 = PW / 2 - total / 2
-    boxes = {}
-    for idx, (name, key) in enumerate((("STOP", "stop"), ("PLAY", "play"),
-                                       ("PAUSE", "pause"))):
-        left = bx0 + idx * (box_w + box_gap)
-        c.setStrokeColorRGB(0, 0, 0); c.setLineWidth(1.8)
-        c.rect(X(left), Y(box_top + box_h), box_w * mm, box_h * mm, stroke=1, fill=0)
-        c.setFont("Helvetica-Bold", 13)
-        c.drawCentredString(X(left + box_w / 2), Y(box_top + box_h / 2 + 2), name)
-        boxes[key] = (round(left, 1), round(left + box_w, 1), box_top, box_top + box_h)
-    c.setFont("Helvetica", 8)
-    c.drawCentredString(X(PW / 2), Y(box_top - 3),
-                        "Playback token: rest in STOP; slide to PLAY / PAUSE. "
-                        "Place on the SEEK strip to jump.")
+    # --- how-to note (playback is on-screen with the mouse, both conditions) ---
+    c.setFillColorRGB(0.25, 0.25, 0.25); c.setFont("Helvetica", 9)
+    c.drawCentredString(X(PW / 2), Y(band_bot + 16),
+                        "Speaker token on a chunk = set who is talking.   "
+                        "Boundary handle = grab the nearer edge of that chunk and slide.   "
+                        "Listen with the on-screen player.")
 
     # --- title (top center, clear of the corner fiducials' quiet zones) ---
     c.setFillColorRGB(0, 0, 0); c.setFont("Helvetica-Bold", 13)
@@ -187,11 +159,8 @@ def build_timeline(path, duration_s, n_bands):
                         "50 mm  -  print at 100% / Actual size (measure to confirm)")
 
     c.showPage(); c.save()
-    transport = {"seek": {"x0": x0, "x1": x1, "y0": seek_y0, "y1": seek_y1},
-                 **{k: {"x0": v[0], "x1": v[1], "y0": v[2], "y1": v[3]}
-                    for k, v in boxes.items()}}
     return dict(x0=x0, x1=x1, mmps=mmps, bands=bands, corner_centers=centers,
-                corner_ids=CORNER_IDS, marker_mm=m, transport=transport)
+                corner_ids=CORNER_IDS, marker_mm=m)
 
 # ---------- token sheet ----------
 def build_tokens(path, n_speakers, n_handles=1):
@@ -216,13 +185,11 @@ def build_tokens(path, n_speakers, n_handles=1):
                         "Speaker token = drop in a segment to reassign it.  "
                         "Boundary token = snaps to nearest edge, slide to move it.")
 
-    # one flat list: speaker tokens, boundary handle(s), playback token
+    # one flat list: speaker tokens + boundary handle(s) (playback is on-screen)
     items = [(f"S{i+1}", SPEAKER_ID0 + i, "speaker") for i in range(n_speakers)]
     items += [(f"B{j+1}", BOUNDARY_ID0 + j, "boundary") for j in range(n_handles)]
-    items += [("P1", PLAYBACK_ID0, "playback")]
 
-    kind_label = {"speaker": "SPEAKER", "boundary": "BOUNDARY HANDLE",
-                  "playback": "PLAYBACK"}
+    kind_label = {"speaker": "SPEAKER", "boundary": "BOUNDARY HANDLE"}
     top0 = 30.0
     step = cut + 8.0                              # fit 5 tokens on A4
     for i, (name, mid, kind) in enumerate(items):
@@ -262,8 +229,7 @@ def main():
     meta = build_timeline(tl, args.duration, args.bands)
     build_tokens(tk, args.speakers, args.handles)
     json.dump({"x0_mm": meta["x0"], "mm_per_second": meta["mmps"],
-               "duration_s": args.duration, "bands": meta["bands"],
-               "zones": meta["transport"]},
+               "duration_s": args.duration, "bands": meta["bands"]},
               open(zf, "w"), indent=2)
 
     print("Wrote:")

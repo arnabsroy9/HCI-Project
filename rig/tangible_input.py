@@ -59,40 +59,52 @@ def nearest_boundary(segments, t):
     return bd
 
 
-def token_to_op(mid, t, segments, speakers):
-    """Map a settled token at GLOBAL time t to an operation dict, or None."""
+def nearer_edge(segments, t):
+    """Boundary index of the nearer edge (start or end) of the segment that
+    CONTAINS t -- i.e. which of THIS segment's two edges a handle here grabs."""
+    seg = segment_at(segments, t)
+    if seg is None:
+        return None
+    i, n = seg["id"], len(segments)
+    cands = []
+    if i > 0:      cands.append((abs(t - seg["start"]), i - 1))   # start edge
+    if i < n - 1:  cands.append((abs(t - seg["end"]),   i))       # end edge
+    return min(cands)[1] if cands else None
+
+
+def process_token(mid, t, segments, speakers, committed, latch, prog):
+    """One token per frame -> (op_to_send_or_None, live_target_or_None).
+
+    Speaker token: reassign the segment under it (and keep it highlighted).
+    Boundary handle: grab the nearer edge of the segment it's over and, once
+    grabbed, stay LATCHED to that edge so dragging never jumps to another
+    boundary -- until the token lifts (latch cleared on absent)."""
     if t is None:
-        return None
-    if mid >= BOUNDARY_ID0:                      # boundary handle
-        b = nearest_boundary(segments, t)
+        return None, None
+    if BOUNDARY_ID0 <= mid < PLAYBACK_ID:                # boundary handle
+        b = latch.get(mid)
         if b is None:
-            return None
-        return {"op": "move_boundary", "boundary": b, "t": round(t, 3)}
-    idx = mid - SPEAKER_ID0                       # speaker token
+            b = nearer_edge(segments, t)
+        if b is None:
+            return None, None
+        tgt = {"id": mid, "kind": "boundary", "time": round(t, 3),
+               "boundary": b, "latched": mid in latch, "progress": prog}
+        op = None
+        if committed:
+            latch[mid] = b                               # grab / keep this edge
+            op = {"op": "move_boundary", "boundary": b, "t": round(t, 3)}
+        return op, tgt
+    idx = mid - SPEAKER_ID0                               # speaker token
     if not (0 <= idx < len(speakers)):
-        return None
+        return None, None
     spk = speakers[idx]
     seg = segment_at(segments, t)
-    if seg is None or seg["speaker"] == spk:
-        return None                               # nothing to change
-    return {"op": "reassign", "segment": seg["id"], "speaker": spk}
-
-
-def hover_target(mid, t, segments, speakers, prog):
-    """Live PRE-commit target for the on-screen cue, or None. Says what this
-    token is currently pointing at (segment / boundary) and its dwell progress."""
-    if t is None:
-        return None
-    if mid >= BOUNDARY_ID0:
-        return {"id": mid, "kind": "boundary", "time": round(t, 3),
-                "boundary": nearest_boundary(segments, t), "progress": prog}
-    idx = mid - SPEAKER_ID0
-    if not (0 <= idx < len(speakers)):
-        return None
-    seg = segment_at(segments, t)
-    return {"id": mid, "kind": "speaker", "time": round(t, 3),
-            "speaker": speakers[idx], "segment": seg["id"] if seg else None,
-            "progress": prog}
+    tgt = {"id": mid, "kind": "speaker", "time": round(t, 3), "speaker": spk,
+           "segment": seg["id"] if seg else None, "progress": prog}
+    op = None
+    if committed and seg is not None and seg["speaker"] != spk:
+        op = {"op": "reassign", "segment": seg["id"], "speaker": spk}
+    return op, tgt
 
 
 # ---------- dwell-based commit ----------
@@ -200,38 +212,33 @@ def send_op(server, op):
 
 
 # ---------- run modes ----------
-def run_sim(server, holds, bands, still, dwell, rearm, pbc=None):
+def run_sim(server, holds, bands, still, dwell, rearm):
     """Play scripted token holds: [{id, x_mm, y_mm, hold_s}, ...]."""
     st = api(server, "/api/state")
     segments, speakers = st["segments"], st["speakers"]
     com = Committer(still, dwell, rearm)
-    emitted = []
+    latch, emitted = {}, []
     for hold in holds:
         mid = hold["id"]
         y = hold.get("y_mm", bands[0]["y0"])
         steps = max(2, int(hold["hold_s"] * 10))
         for _ in range(steps):
             now = time.time()
-            if pbc is not None and mid == PLAYBACK_ID:
-                cmd = pbc.update(hold["x_mm"], hold.get("y_mm", 0.0))
-                if cmd:
-                    api(server, "/api/playback", {**cmd, "source": "aruco"})
-                    emitted.append(cmd)
-                    print("  playback ->", cmd)
-            elif com.update(mid, hold["x_mm"], y, now):
-                t = band_time(hold["x_mm"], y, bands)
-                op = token_to_op(mid, t, segments, speakers)
-                if op:
-                    segments = send_op(server, op) or segments
-                    emitted.append(op)
-                    print("  commit id%-3d -> %s" % (mid, op))
+            t = band_time(hold["x_mm"], y, bands)
+            committed = com.update(mid, hold["x_mm"], y, now)
+            op, _tg = process_token(mid, t, segments, speakers, committed,
+                                    latch, round(com.progress(mid, now), 2))
+            if op:
+                segments = send_op(server, op) or segments
+                emitted.append(op)
+                print("  commit id%-3d -> %s" % (mid, op))
             time.sleep(0.1)
-        com.absent(mid)
+        com.absent(mid); latch.pop(mid, None)
     print(f"emitted {len(emitted)} command(s)")
     return emitted
 
 
-def run_camera(server, index, bands, still, dwell, rearm, pbc=None):
+def run_camera(server, index, bands, still, dwell, rearm):
     import cv2
     import live_detect as L
     det = cv2.aruco.ArucoDetector(
@@ -239,6 +246,7 @@ def run_camera(server, index, bands, still, dwell, rearm, pbc=None):
         cv2.aruco.DetectorParameters())
     cap = L.setup_camera(index)
     com = Committer(still, dwell, rearm)
+    latch = {}                                   # boundary token -> grabbed edge
     st = api(server, "/api/state")
     segments, speakers = st["segments"], st["speakers"]
     print("tracking... Ctrl+C to stop")
@@ -263,23 +271,16 @@ def run_camera(server, index, bands, still, dwell, rearm, pbc=None):
             seen, targets = set(), []
             for mid, _t, _lane, x_mm, y_mm in toks:
                 seen.add(mid)
-                if pbc is not None and mid == PLAYBACK_ID:
-                    cmd = pbc.update(x_mm, y_mm)
-                    if cmd:
-                        api(server, "/api/playback", {**cmd, "source": "aruco"})
-                        print("  playback ->", cmd)
-                    continue
                 t = band_time(x_mm, y_mm, bands)
-                if com.update(mid, x_mm, y_mm, now):
-                    op = token_to_op(mid, t, segments, speakers)
-                    if op:
-                        segments = send_op(server, op) or segments
-                        print("  commit id%-3d -> %s" % (mid, op))
-                tg = hover_target(mid, t, segments, speakers,
-                                  round(com.progress(mid, now), 2))
+                committed = com.update(mid, x_mm, y_mm, now)
+                op, tg = process_token(mid, t, segments, speakers, committed,
+                                       latch, round(com.progress(mid, now), 2))
+                if op:
+                    segments = send_op(server, op) or segments
+                    print("  commit id%-3d -> %s" % (mid, op))
                 if tg:
                     targets.append(tg)
-            if now - last_hover > 0.12:          # live target cue -> display
+            if now - last_hover > 0.08:          # live target cue -> display
                 last_hover = now
                 try:
                     api(server, "/api/hover", {"targets": targets})
@@ -287,7 +288,7 @@ def run_camera(server, index, bands, still, dwell, rearm, pbc=None):
                     pass
             for mid in list(com.ref):
                 if mid not in seen:
-                    com.absent(mid)
+                    com.absent(mid); latch.pop(mid, None)   # release on lift
     except KeyboardInterrupt:
         cap.release()
 
@@ -303,21 +304,20 @@ def main():
     ap.add_argument("--rearm-mm", type=float, default=8.0)
     args = ap.parse_args()
 
-    zones = load_zones()
-    pbc = PlaybackController(zones) if zones else None
     # Folded-band geometry from generate_sheets; fall back to one full-width
     # 60 s band (old single-timeline sheet) if the JSON predates bands.
-    bands = (zones or {}).get("bands") or [{
+    geo = load_zones()
+    bands = (geo or {}).get("bands") or [{
         "index": 0, "t0": 0.0, "t1": args.duration, "x0": X0_MM, "x1": 400.0,
         "mm_per_s": (400.0 - X0_MM) / args.duration, "y0": 0.0, "y1": 300.0}]
 
     if args.sim:
         holds = json.load(open(args.sim))
         run_sim(args.server, holds, bands, args.still_mm, args.dwell_ms,
-                args.rearm_mm, pbc)
+                args.rearm_mm)
     else:
         run_camera(args.server, args.index, bands,
-                   args.still_mm, args.dwell_ms, args.rearm_mm, pbc)
+                   args.still_mm, args.dwell_ms, args.rearm_mm)
 
 
 if __name__ == "__main__":

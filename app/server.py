@@ -426,12 +426,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, {"version": STATE["version"],
                                             "segments": STATE["segments"]})
             if u.path == "/api/playback":
+                # Playback (play/pause/seek) is mouse-driven in BOTH conditions;
+                # its time is logged and subtracted, so the device is irrelevant
+                # and NOT source-guarded. Only corrections (/api/op) are guarded.
                 with LOCK:
                     if not STATE["session"]:
                         return self._json(409, {"error": "no active session"})
-                    err = check_source(body.get("source", "mouse"))
-                    if err:
-                        return self._json(409, {"error": err})
                     return self._json(200, playback_event(
                         body.get("event"), body.get("media_t"),
                         body.get("source", "mouse")))

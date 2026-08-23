@@ -76,18 +76,17 @@ function buildRuler() {
   el.innerHTML = "";
   const d = (ws && ws.getDuration()) || 0;
   if (!d) return;
-  const step = 5;                                   // tick every 5 s, label every 10 s
   const last = Math.round(d);
-  for (let t = 0; t <= last; t += step) {
+  for (let t = 0; t <= last; t += 1) {              // 1 s minor ticks, label every 5 s
     const pct = (t / d) * 100;
-    const major = t % 10 === 0;
+    const major = t % 5 === 0;
     const tick = document.createElement("div");
     tick.className = "tick" + (major ? " major" : "");
     tick.style.left = pct + "%";
     el.appendChild(tick);
     if (major) {
       const lab = document.createElement("span");
-      lab.className = "ticklabel" + (t === 0 ? " first" : t + step > last ? " last" : "");
+      lab.className = "ticklabel" + (t === 0 ? " first" : t + 5 > last ? " last" : "");
       lab.style.left = pct + "%";
       lab.textContent = fmt(t);
       el.appendChild(lab);
@@ -227,9 +226,9 @@ function initWave() {
 }
 
 // log a playback event so analysis can subtract navigation from total time.
-// In tangible trials the tracker logs its own playback events, so skip here.
+// Playback is mouse-driven in BOTH conditions now, so log it in both.
 function pb(event, media_t) {
-  if (!running || mode !== "gui") return;
+  if (!running) return;
   fetch("/api/playback", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ event, media_t, source: "mouse" }),
@@ -267,15 +266,6 @@ async function poll() {
       ? { t: g.time, seg: null, bnd: g.boundary, spk: null, progress: g.progress }
       : { t: g.time, seg: g.segment, spk: g.speaker, progress: g.progress }));
     if (st.version !== lastVersion) { lastVersion = st.version; reconcile(st.segments); }
-    const p = st.playback;
-    if (p && p.pv !== lastPv) {
-      lastPv = p.pv;
-      if (ws) {
-        if (Math.abs((ws.getCurrentTime() || 0) - p.media_t) > 0.3) ws.setTime(p.media_t);
-        if (p.playing && !ws.isPlaying()) ws.play();
-        else if (!p.playing && ws.isPlaying()) ws.pause();
-      }
-    }
   } catch { /* ignore transient */ }
 }
 
@@ -309,13 +299,13 @@ function showTrial(cur) {
   clearInterval(timerId); timerId = setInterval(tick, 200);
   clearInterval(pollId);
   lastPv = -1;
-  $("play").disabled = mode !== "gui";        // tangible: playback via tokens only
-  $("seek").disabled = mode !== "gui";
+  $("play").disabled = false;                 // playback is mouse-driven in both
+  $("seek").disabled = false;
   $("finish").textContent = isLast ? "Finish session ✓" : "Done — next →";
-  if (mode === "tangible") { poll(); pollId = setInterval(poll, 150); }
+  if (mode === "tangible") { poll(); pollId = setInterval(poll, 90); }
   setStatus(mode === "gui"
     ? "When it looks fixed, press Done."
-    : "The camera does the tracking — just move the tokens.");
+    : "Move the tokens to correct; use ▶ / the bar to listen.");
 }
 
 function showResults(res) {
