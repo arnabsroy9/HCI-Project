@@ -17,21 +17,22 @@ const labelFor = (spk) => (spk === SIL ? "" : spk);
 const COND = {
   gui: {
     icon: "🖱️", title: "Mouse",
-    sub: "Correct the labels with the mouse. The tokens are not used.",
+    sub: "Correct the labels with the mouse.",
     steps: [
       "<b>Click</b> a coloured block to change who is speaking.",
       "<b>Drag the edge</b> between two blocks to move where one speaker stops and the next begins.",
       "Press <b>Space</b> (or ▶ Play) to listen back.",
+      "Press <b>Ctrl+Z</b> to undo your last change.",
     ],
   },
   tangible: {
     icon: "✋", title: "Physical tokens",
-    sub: "Correct the labels with the tokens on the printed sheet. Please don’t use the mouse.",
+    sub: "Correct the labels with the tokens on the sheet. Use the mouse only for the player.",
     steps: [
       "<b>Place a speaker token</b> (S1 / S2 / S3) on a block to set who is speaking.",
-      "<b>Put the boundary handle</b> on a line and slide it to move a boundary.",
-      "<b>Rest the playback token</b> on PLAY, PAUSE or STOP — or on the SEEK strip to jump to a time.",
-      "<b>Hold each token still</b> for a moment so the camera registers it.",
+      "<b>Put the boundary handle</b> on a block and slide to move its nearer edge.",
+      "<b>Hold each token still</b> a moment so the camera registers it; lift it off to release.",
+      "Listen with the <b>▶ on-screen player</b>; press <b>Ctrl+Z</b> to undo.",
     ],
   },
 };
@@ -345,6 +346,15 @@ async function begin() {
   } catch (e) { err.textContent = "Could not start: " + e.message; err.hidden = false; }
 }
 
+async function undo() {                            // Ctrl+Z: revert last correction
+  if (!running) return;
+  try {
+    const res = await api("/api/undo", { source: mode === "gui" ? "mouse" : "aruco" });
+    reconcile(res.segments);
+    setStatus("undid last change");
+  } catch (e) { setStatus("undo error: " + e.message); }
+}
+
 async function finishTrial() {
   running = false; clearInterval(timerId); clearInterval(pollId);
   $("finish").disabled = true;
@@ -374,6 +384,10 @@ $("seek").onchange = () => {
   seeking = false;
 };
 document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
+    if (running) { e.preventDefault(); undo(); }
+    return;
+  }
   if (e.code === "Space" && ws && e.target.tagName !== "INPUT") {
     e.preventDefault(); ws.playPause();
   }

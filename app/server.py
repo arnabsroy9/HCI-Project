@@ -37,6 +37,7 @@ STATE = {
     "session": None,    # {participant, condition, phase, started_epoch, log_path}
     "protocol": None,   # {participant, group, trials, idx, results}
     "playback": {"playing": False, "media_t": 0.0, "pv": 0},
+    "undo": [],         # stack of pre-op segment snapshots (Ctrl+Z)
 }
 
 # --- counterbalanced within-subjects protocol ---
@@ -156,7 +157,7 @@ def start_session(participant, condition, clip, phase="single", trial_index=None
     log_path = os.path.join(LOGS, f"{safe}_{condition}_{clip}_{phase}_{ts}.jsonl")
     STATE.update(clip=clip, duration=hyp["duration"], speakers=hyp["speakers"],
                  segments=[dict(s) for s in hyp["segments"]],
-                 answer_key=key, version=0,
+                 answer_key=key, version=0, undo=[],
                  session={"participant": participant, "condition": condition,
                           "clip": clip, "phase": phase, "trial_index": trial_index,
                           "started_epoch": time.time(), "log_path": log_path},
@@ -283,6 +284,8 @@ def log_event(rec):
 # ---------- operations ----------
 def apply_op(op):
     segs = STATE["segments"]
+    STATE["undo"].append([dict(s) for s in segs])    # snapshot for Ctrl+Z
+    del STATE["undo"][:-200]                          # cap the stack
     kind = op.get("op")
     if kind == "reassign":
         sid = int(op["segment"]); spk = op["speaker"]
@@ -446,6 +449,18 @@ class Handler(BaseHTTPRequestHandler):
                     HOVER["targets"] = body.get("targets", [])
                     HOVER["epoch"] = time.time()
                 return self._json(200, {"ok": True})
+            if u.path == "/api/undo":             # Ctrl+Z: revert last correction
+                with LOCK:
+                    if not STATE["session"]:
+                        return self._json(409, {"error": "no active session"})
+                    if STATE["undo"]:
+                        STATE["segments"] = STATE["undo"].pop()
+                        STATE["version"] += 1
+                        log_event({"event": "undo",
+                                   "source": body.get("source", "mouse")})
+                    return self._json(200, {"version": STATE["version"],
+                                            "segments": STATE["segments"],
+                                            "can_undo": bool(STATE["undo"])})
             if u.path == "/api/session/finish":
                 with LOCK:
                     summary = score()

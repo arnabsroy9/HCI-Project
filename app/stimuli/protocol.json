@@ -1,0 +1,5 @@
+{
+  "train_clip": "clipBnT",
+  "meas_set1": ["clipBnA", "clipBnB"],
+  "meas_set2": ["clipBnC", "clipBnD"]
+}
