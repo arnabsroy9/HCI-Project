@@ -109,10 +109,13 @@ def _load_bands():
     return json.load(open(p)).get("bands", [])
 
 
-def band_time(x_mm, y_mm, bands):
-    """Folded-band map: row (y) -> band, x -> time within it -> global time."""
+def band_time(x_mm, y_mm, bands, x_margin=8.0):
+    """Folded-band map: row (y) -> band, x -> time within it -> global time.
+    Rejects tokens parked off the sheet past an axis end."""
     for b in bands:
         if b["y0"] <= y_mm <= b["y1"]:
+            if not (b["x0"] - x_margin <= x_mm <= b["x1"] + x_margin):
+                return None, None
             t = b["t0"] + (x_mm - b["x0"]) / b["mm_per_s"]
             return b["index"], max(b["t0"], min(b["t1"], t))
     return None, None

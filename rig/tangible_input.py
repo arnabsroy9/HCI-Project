@@ -29,15 +29,20 @@ X0_MM = 40.0
 SPEAKER_ID0 = 10
 BOUNDARY_ID0 = 20
 PLAYBACK_ID = 30
+BAND_X_MARGIN = 8.0     # mm past an axis end still counts; further = off the sheet
 
 
 # ---------- geometry / mapping ----------
 def band_time(x_mm, y_mm, bands):
     """Map a token at (x_mm, y_mm) to GLOBAL clip time using the folded-band
     geometry: the row (y) picks the band, x picks the time within it. Returns
-    None if the token isn't inside any band row."""
+    None if the token isn't inside a band row, OR is parked off the sheet past
+    an axis end -- so a token set aside within the camera frame doesn't fire a
+    spurious op via homography extrapolation."""
     for b in bands:
         if b["y0"] <= y_mm <= b["y1"]:
+            if not (b["x0"] - BAND_X_MARGIN <= x_mm <= b["x1"] + BAND_X_MARGIN):
+                return None                          # off the sheet (parked)
             t = b["t0"] + (x_mm - b["x0"]) / b["mm_per_s"]
             return max(b["t0"], min(b["t1"], t))     # clamp to the band's span
     return None
