@@ -206,14 +206,47 @@ async function onBoundary(region, side) {
   } catch (e) { setStatus("op error: " + e.message); }
 }
 
+function injectShadowStyles() {
+  // wavesurfer.js 7.x renders the waveform inside an open shadow root, so
+  // external stylesheets (style.css) don't reach the region elements. Inject
+  // a <style> into that shadow root to: (a) hide the resize handle's visual
+  // chrome (it stays in the DOM for the GUI drag, with pointer-events:all
+  // and cursor:ew-resize preserved), and (b) flatten the 2px border-radius
+  // the plugin puts on each region so adjacent regions butt up exactly and
+  // the dark waveColor doesn't bleed through the corner gap.
+  const host = document.querySelector("#wave > div");   // wavesurfer shadow host
+  const sr = host && host.shadowRoot;                   // (parentElement is null in a shadow root)
+  if (!sr || sr.querySelector("style[data-injected-region='1']")) return;
+  const s = document.createElement("style");
+  s.setAttribute("data-injected-region", "1");
+  s.textContent = `
+    [part*="region-handle"] {              /* keep draggable, hide the dark edge line */
+      opacity: 0 !important;
+      background: transparent !important;
+      border: 0 !important;
+      box-shadow: none !important;
+      outline: none !important;
+    }
+    [part~="region"] {                     /* flat corners so adjacent regions butt up */
+      border-radius: 0 !important;
+      border: 0 !important;
+      box-shadow: none !important;
+      outline: none !important;
+    }
+  `;
+  sr.appendChild(s);
+}
+
 function initWave() {
   if (ws) ws.destroy();
   ws = WaveSurfer.create({
     container: "#wave", url: `/stimuli/${clip}/audio.wav`, height: 120,
-    waveColor: "#c9c9c9", progressColor: "#9aa", cursorColor: "#333",
+    waveColor: "#555", progressColor: "#9aa", cursorColor: "#333",
     fillParent: true, autoScroll: false, hideScrollbar: true, // fixed scale, no zoom
   });
   regions = ws.registerPlugin(RegionsPlugin.create());
+  injectShadowStyles();
+  ws.on("decode", injectShadowStyles);        // ensure it lands once the shadow DOM exists
   ws.on("decode", buildRegions);
   ws.on("decode", buildRuler);
   regions.on("region-clicked", (r, e) => { e.stopPropagation(); onReassign(r); });
