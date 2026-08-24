@@ -22,6 +22,8 @@ __pycache__/
 # Rig captures / previews (regenerable)
 rig/detect/
 rig/*_preview.png
+rig/camera_check.png
+rig/_*.png
 rig/mapping_constants.txt
 webcam-test/frames/
 
