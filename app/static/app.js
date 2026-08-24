@@ -4,7 +4,7 @@
 import WaveSurfer from "/static/vendor/wavesurfer.esm.js";
 import RegionsPlugin from "/static/vendor/regions.esm.js";
 
-const COLORS = { S1: "#e63946", S2: "#457b9d", S3: "#2a9d8f" };
+const COLORS = { S1: "#e63946", S2: "#1d6fe0", S3: "#2a9d8f" };
 const rgba = (hex, a) => {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
