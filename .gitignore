@@ -29,7 +29,9 @@ webcam-test/frames/
 
 # App runtime
 app/logs/
+# Real/licensed clip audio stays out; synthetic clip*/ audio ships (needed to run).
 app/stimuli/*/audio.wav
+!app/stimuli/clip*/audio.wav
 app/errors.csv
 app/trials.csv
 
