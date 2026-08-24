@@ -139,7 +139,12 @@ terminal.
    ```bash
    .\.venv\Scripts\python.exe app\server.py
    ```
-2. **Aim the overhead C920** and run the readiness check before each participant:
+2. **Aim the overhead C920.** Open the live preview and adjust the stand/sheet
+   until all four corner markers are outlined (ESC to quit, `s` saves a frame):
+   ```bash
+   .\.venv\Scripts\python.exe rig\live_detect.py --live --index 1
+   ```
+   Then run the readiness check before each participant:
    ```bash
    .\.venv\Scripts\python.exe rig\camera_check.py
    ```
