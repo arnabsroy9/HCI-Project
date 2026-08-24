@@ -87,11 +87,11 @@ synthetic regardless of audio source.
 .\.venv\Scripts\python.exe app\make_bengali_tts.py --clip clipBnA --seed 11   # needs network once
 ```
 
-The real Bengali-Loop corpus is supported (`select_recordings.py` →
-`import_kaggle.py`) but the audio is **licensed and gitignored**; the study as
-configured is fully synthetic. Each clip directory ships its ground-truth JSON
-(`hypothesis.json` / `answer_key.json` / `meta.json`); the `audio.wav` is
-regenerated locally and never committed.
+The synthetic clips ship complete — their `audio.wav` **is committed** (they're
+generated, not licensed), so a clone runs the study out of the box. The real
+Bengali-Loop corpus is supported (`select_recordings.py` → `import_kaggle.py`)
+but its audio is **licensed and gitignored**; the study as configured is fully
+synthetic. `make_bengali_tts.py` is only needed to add or regenerate clips.
 
 ---
 
@@ -174,9 +174,9 @@ More detail: [app/README.md](app/README.md) and [rig/README.md](rig/README.md).
 
 - `.venv/` — recreated from `requirements.txt`.
 - `app/logs/` — **participant data**, kept private/local.
-- `app/stimuli/*/audio.wav` — regenerable synthetic audio (and licensed real
-  audio) are never committed; only the ground-truth JSON is tracked.
-- `app/stimuli/train_*/`, `test_*/` — licensed real Bengali-Loop clips.
+- `app/stimuli/train_*/`, `test_*/` — licensed real Bengali-Loop clips (audio
+  excluded). Synthetic `clip*/audio.wav` **is** committed so the study runs
+  as-is.
 - Rig captures / previews (`rig/camera_check.png`, `*_preview.png`, `detect/`).
 
 ---
